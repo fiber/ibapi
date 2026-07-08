@@ -141,6 +141,36 @@ func TestLoopUntilDoneWatcherReleasedOnDirectDisconnect(t *testing.T) {
 	}
 }
 
+// TestSetWrapperRejectedAfterConnect verifies SetWrapper is a no-op
+// once a connection exists. Following the Python SDK model (wrapper
+// set at construction, never replaced during a session), we reject
+// mid-Run swaps rather than plumb atomic pointers through every
+// callback site. Pre-Connect swaps still succeed.
+func TestSetWrapperRejectedAfterConnect(t *testing.T) {
+	addr, stop := listenLoopback(t)
+	defer stop()
+	host, port := splitHostPort(t, addr)
+
+	ic := NewIbClient(new(Wrapper))
+
+	// pre-Connect swap works
+	replacement := new(Wrapper)
+	if err := ic.SetWrapper(replacement); err != nil {
+		t.Fatalf("pre-Connect SetWrapper returned err: %v", err)
+	}
+
+	if err := ic.Connect(host, port, 20); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer ic.Disconnect()
+
+	// post-Connect swap must be rejected — connection is CONNECTING
+	// at this point since HandShake hasn't run.
+	if err := ic.SetWrapper(new(Wrapper)); err != ALREADY_CONNECTED {
+		t.Fatalf("post-Connect SetWrapper got %v; want ALREADY_CONNECTED", err)
+	}
+}
+
 // TestHandshakeCtxCancelTearsDownReceiver verifies that a HandShake
 // aborted mid-confirm doesn't leak goReceive. Before the fix, the
 // timeout / ctx-cancel branches returned without stopping goReceive,

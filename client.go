@@ -57,8 +57,11 @@ type IbClient struct {
 
 // NewIbClient create IbClient with wrapper
 func NewIbClient(wrapper IbWrapper) *IbClient {
-	ic := &IbClient{}
-	ic.SetWrapper(wrapper)
+	ic := &IbClient{
+		wrapper: wrapper,
+		decoder: ibDecoder{wrapper: wrapper},
+	}
+	log.Debug("set wrapper", zap.Reflect("wrapper", wrapper))
 	ic.reset()
 
 	return ic
@@ -85,11 +88,21 @@ func (ic *IbClient) GetReqID() int64 {
 	return atomic.AddInt64(&ic.reqIDSeq, 1)
 }
 
-// SetWrapper setup the Wrapper
-func (ic *IbClient) SetWrapper(wrapper IbWrapper) {
+// SetWrapper replaces the message-handling wrapper. This must happen
+// before Connect — the Python SDK follows a stricter "construction-
+// time only" model (EClient(wrapper) with no setter); we keep the
+// setter for the pre-Connect window but reject post-Connect swaps
+// so goDecode never reads ic.decoder / ic.wrapper concurrently with
+// a whole-struct overwrite. Callers that need to swap on an active
+// session should Disconnect first.
+func (ic *IbClient) SetWrapper(wrapper IbWrapper) error {
+	if ic.conn != nil && ic.conn.state.Load() != DISCONNECTED {
+		return ALREADY_CONNECTED
+	}
 	ic.wrapper = wrapper
-	log.Debug("set wrapper", zap.Reflect("wrapper", wrapper))
 	ic.decoder = ibDecoder{wrapper: ic.wrapper}
+	log.Debug("set wrapper", zap.Reflect("wrapper", wrapper))
+	return nil
 }
 
 // SetContext setup the Connection Context
