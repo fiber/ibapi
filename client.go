@@ -142,6 +142,23 @@ func (ic *IbClient) setErr(err error) {
 	ic.errOnce.Do(func() { ic.err = err })
 }
 
+// enqueue routes a request payload to goRequest. Guards against
+// send-after-shutdown: without this, callers that fire a request
+// after Disconnect fills the buffered reqChan (cap 10) and then
+// blocks forever with no reader. Fires a NOT_CONNECTED error through
+// the wrapper so the caller can react.
+func (ic *IbClient) enqueue(msg []byte) {
+	if !ic.IsConnected() {
+		ic.wrapper.Error(NO_VALID_ID, NOT_CONNECTED.code, NOT_CONNECTED.msg)
+		return
+	}
+	select {
+	case ic.reqChan <- msg:
+	case <-ic.terminatedSignal:
+		ic.wrapper.Error(NO_VALID_ID, NOT_CONNECTED.code, NOT_CONNECTED.msg)
+	}
+}
+
 // panicError wraps a recovered panic value into an error. The old code
 // assumed the panic value was always a string; a callback that panics
 // with an error or any other value would then crash the recovery block
@@ -281,10 +298,23 @@ func (ic *IbClient) HandShake() error {
 	go ic.goReceive() // receive the data, make sure client receives the nextValidID and manageAccount which help comfirm the client.
 	comfirmMsgIDs := []IN{mNEXT_VALID_ID, mMANAGED_ACCTS}
 
+	// If we bail out of the confirm loop early (timeout / ctx cancel),
+	// goReceive is already spawned and will keep consuming the socket.
+	// Full Disconnect() tears it down cleanly: closes the socket
+	// (unblocking goReceive's scanner), signals shutdown, waits, and
+	// resets. The caller needs to redo Connect anyway.
+	handshakeOK := false
+	defer func() {
+		if !handshakeOK {
+			ic.Disconnect()
+		}
+	}()
+
 	/* comfirmReadyLoop try to receive manage account and vaild id from tws or gateway,
 	in this way, client could make sure no other client with the same clientId was already connected to tws or gateway.
 	*/
-	timeout := time.After(60 * time.Second)
+	timeoutTimer := time.NewTimer(60 * time.Second)
+	defer timeoutTimer.Stop()
 comfirmReadyLoop:
 	for {
 		select {
@@ -308,7 +338,7 @@ comfirmReadyLoop:
 				ic.wrapper.ConnectAck()
 				break comfirmReadyLoop
 			}
-		case <-timeout:
+		case <-timeoutTimer.C:
 			ic.setConnState(DISCONNECTED)
 			ic.wrapper.Error(NO_VALID_ID, ALREADY_CONNECTED.code, ALREADY_CONNECTED.msg)
 			return ALREADY_CONNECTED
@@ -319,6 +349,7 @@ comfirmReadyLoop:
 		}
 	}
 
+	handshakeOK = true
 	log.Info("HandShake completed")
 	return nil
 }
@@ -377,7 +408,7 @@ func (ic *IbClient) SetServerLogLevel(logLevel int64) {
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ---------------req func ----------------------------------------------
@@ -490,7 +521,7 @@ func (ic *IbClient) ReqMktData(reqID int64, contract *Contract, genericTickList 
 	}
 
 	msg := makeMsgBytes(fields...)
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelMktData cancels the market data
@@ -506,7 +537,7 @@ func (ic *IbClient) CancelMktData(reqID int64) {
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqMarketDataType changes the market data type.
@@ -538,7 +569,7 @@ func (ic *IbClient) ReqMarketDataType(marketDataType int64) {
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqSmartComponents request the smartComponents.
@@ -550,7 +581,7 @@ func (ic *IbClient) ReqSmartComponents(reqID int64, bboExchange string) {
 
 	msg := makeMsgBytes(mREQ_SMART_COMPONENTS, reqID, bboExchange)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqMarketRule request the market rule.
@@ -562,7 +593,7 @@ func (ic *IbClient) ReqMarketRule(marketRuleID int64) {
 
 	msg := makeMsgBytes(mREQ_MARKET_RULE, marketRuleID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqTickByTickData request the tick-by-tick data.
@@ -604,7 +635,7 @@ func (ic *IbClient) ReqTickByTickData(reqID int64, contract *Contract, tickType 
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelTickByTickData cancel the tick-by-tick data
@@ -616,7 +647,7 @@ func (ic *IbClient) CancelTickByTickData(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_TICK_BY_TICK_DATA, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -691,7 +722,7 @@ func (ic *IbClient) CalculateImpliedVolatility(reqID int64, contract *Contract, 
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 //CalculateOptionPrice calculate the price of the option
@@ -762,7 +793,7 @@ func (ic *IbClient) CalculateOptionPrice(reqID int64, contract *Contract, volati
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelCalculateImpliedVolatility cancels the implied-volatility
@@ -778,7 +809,7 @@ func (ic *IbClient) CancelCalculateImpliedVolatility(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_CALC_IMPLIED_VOLAT, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelCalculateOptionPrice cancels the calculation of option price
@@ -792,7 +823,7 @@ func (ic *IbClient) CancelCalculateOptionPrice(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_CALC_OPTION_PRICE, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ExerciseOptions exercise the options.
@@ -855,7 +886,7 @@ func (ic *IbClient) ExerciseOptions(reqID int64, contract *Contract, exerciseAct
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 
 }
 
@@ -1383,7 +1414,7 @@ func (ic *IbClient) PlaceOrder(orderID int64, contract *Contract, order *Order) 
 
 		msg := makeMsgBytes(fields...)
 
-		ic.reqChan <- msg
+		ic.enqueue(msg)
 	}
 
 }
@@ -1394,7 +1425,7 @@ func (ic *IbClient) CancelOrder(orderID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_ORDER, v, orderID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqOpenOrders request the open orders of this client
@@ -1403,7 +1434,7 @@ func (ic *IbClient) ReqOpenOrders() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_OPEN_ORDERS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqAutoOpenOrders will make the client access to the TWS Orders (only if clientId=0)
@@ -1412,7 +1443,7 @@ func (ic *IbClient) ReqAutoOpenOrders(autoBind bool) {
 	const v = 1
 	msg := makeMsgBytes(mREQ_AUTO_OPEN_ORDERS, v, autoBind)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqAllOpenOrders request all the open orders including the orders of other clients and tws
@@ -1421,7 +1452,7 @@ func (ic *IbClient) ReqAllOpenOrders() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_ALL_OPEN_ORDERS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqGlobalCancel cancel all the orders including the orders of other clients and tws
@@ -1430,7 +1461,7 @@ func (ic *IbClient) ReqGlobalCancel() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_GLOBAL_CANCEL, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqIDs request th next valid ID
@@ -1447,7 +1478,7 @@ func (ic *IbClient) ReqIDs() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_IDS, v, 0)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1467,7 +1498,7 @@ func (ic *IbClient) ReqAccountUpdates(subscribe bool, accName string) {
 	const v = 2
 	msg := makeMsgBytes(mREQ_ACCT_DATA, v, subscribe, accName)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqAccountSummary request the account summary.
@@ -1531,7 +1562,7 @@ func (ic *IbClient) ReqAccountSummary(reqID int64, groupName string, tags string
 	const v = 1
 	msg := makeMsgBytes(mREQ_ACCOUNT_SUMMARY, v, reqID, groupName, tags)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelAccountSummary cancel the account summary.
@@ -1540,7 +1571,7 @@ func (ic *IbClient) CancelAccountSummary(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_ACCOUNT_SUMMARY, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqPositions request and subcribe the positions of current account.
@@ -1553,7 +1584,7 @@ func (ic *IbClient) ReqPositions() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_POSITIONS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelPositions cancel the positions update
@@ -1567,7 +1598,7 @@ func (ic *IbClient) CancelPositions() {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_POSITIONS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqPositionsMulti request the positions update of assigned account.
@@ -1580,7 +1611,7 @@ func (ic *IbClient) ReqPositionsMulti(reqID int64, account string, modelCode str
 	const v = 1
 	msg := makeMsgBytes(mREQ_POSITIONS_MULTI, v, reqID, account, modelCode)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelPositionsMulti cancel the positions update of assigned account.
@@ -1593,7 +1624,7 @@ func (ic *IbClient) CancelPositionsMulti(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_POSITIONS_MULTI, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqAccountUpdatesMulti request and subscrie the assigned account update.
@@ -1606,7 +1637,7 @@ func (ic *IbClient) ReqAccountUpdatesMulti(reqID int64, account string, modelCod
 	const v = 1
 	msg := makeMsgBytes(mREQ_ACCOUNT_UPDATES_MULTI, v, reqID, account, modelCode, ledgerAndNLV)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelAccountUpdatesMulti cancel the assigned account update.
@@ -1619,7 +1650,7 @@ func (ic *IbClient) CancelAccountUpdatesMulti(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_ACCOUNT_UPDATES_MULTI, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1638,7 +1669,7 @@ func (ic *IbClient) ReqPnL(reqID int64, account string, modelCode string) {
 
 	msg := makeMsgBytes(mREQ_PNL, reqID, account, modelCode)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelPnL cancel the PnL update of assigned account.
@@ -1650,7 +1681,7 @@ func (ic *IbClient) CancelPnL(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_PNL, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqPnLSingle request and subscribe the single contract PnL of assigned account.
@@ -1662,7 +1693,7 @@ func (ic *IbClient) ReqPnLSingle(reqID int64, account string, modelCode string, 
 
 	msg := makeMsgBytes(mREQ_PNL_SINGLE, reqID, account, modelCode, contractID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelPnLSingle cancel the single contract PnL update of assigned account.
@@ -1674,7 +1705,7 @@ func (ic *IbClient) CancelPnLSingle(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_PNL_SINGLE, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1720,7 +1751,7 @@ func (ic *IbClient) ReqExecutions(reqID int64, execFilter ExecutionFilter) {
 		execFilter.Side)
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1788,7 +1819,7 @@ func (ic *IbClient) ReqContractDetails(reqID int64, contract *Contract) {
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1806,7 +1837,7 @@ func (ic *IbClient) ReqMktDepthExchanges() {
 
 	msg := makeMsgBytes(mREQ_MKT_DEPTH_EXCHANGES)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 //ReqMktDepth request the market depth.
@@ -1895,7 +1926,7 @@ func (ic *IbClient) ReqMktDepth(reqID int64, contract *Contract, numRows int, is
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelMktDepth cancel market depth.
@@ -1914,7 +1945,7 @@ func (ic *IbClient) CancelMktDepth(reqID int64, isSmartDepth bool) {
 	}
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1937,7 +1968,7 @@ func (ic *IbClient) ReqNewsBulletins(allMsgs bool) {
 	const v = 1
 	msg := makeMsgBytes(mREQ_NEWS_BULLETINS, v, allMsgs)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelNewsBulletins cancel the news bulletins
@@ -1946,7 +1977,7 @@ func (ic *IbClient) CancelNewsBulletins() {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_NEWS_BULLETINS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -1968,7 +1999,7 @@ func (ic *IbClient) ReqManagedAccts() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_MANAGED_ACCTS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // RequestFA request fa.
@@ -1981,7 +2012,7 @@ func (ic *IbClient) RequestFA(faData int) {
 	const v = 1
 	msg := makeMsgBytes(mREQ_FA, v, faData)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReplaceFA replace fa.
@@ -2003,7 +2034,7 @@ func (ic *IbClient) ReplaceFA(faData int, cxml string) {
 	const v = 1
 	msg := makeMsgBytes(mREPLACE_FA, v, faData, cxml)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -2148,7 +2179,7 @@ func (ic *IbClient) ReqHistoricalData(reqID int64, contract *Contract, endDateTi
 	msg := makeMsgBytes(fields...)
 	// fmt.Println(msg)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelHistoricalData cancel the update of historical data.
@@ -2165,7 +2196,7 @@ func (ic *IbClient) CancelHistoricalData(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_HISTORICAL_DATA, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqHeadTimeStamp request the head timestamp of assigned contract.
@@ -2202,7 +2233,7 @@ func (ic *IbClient) ReqHeadTimeStamp(reqID int64, contract *Contract, whatToShow
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelHeadTimeStamp cancel the head timestamp data.
@@ -2214,7 +2245,7 @@ func (ic *IbClient) CancelHeadTimeStamp(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_HEAD_TIMESTAMP, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqHistogramData request histogram data.
@@ -2246,7 +2277,7 @@ func (ic *IbClient) ReqHistogramData(reqID int64, contract *Contract, useRTH boo
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelHistogramData cancel histogram data.
@@ -2258,7 +2289,7 @@ func (ic *IbClient) CancelHistogramData(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_HISTOGRAM_DATA, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqHistoricalTicks request historical ticks.
@@ -2303,7 +2334,7 @@ func (ic *IbClient) ReqHistoricalTicks(reqID int64, contract *Contract, startDat
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqScannerParameters requests an XML string that describes all possible scanner queries.
@@ -2312,7 +2343,7 @@ func (ic *IbClient) ReqScannerParameters() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_SCANNER_PARAMETERS, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqScannerSubscription subcribes a scanner that matched the subcription.
@@ -2389,7 +2420,7 @@ func (ic *IbClient) ReqScannerSubscription(reqID int64, subscription *ScannerSub
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelScannerSubscription cancel scanner.
@@ -2401,7 +2432,7 @@ func (ic *IbClient) CancelScannerSubscription(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_SCANNER_SUBSCRIPTION, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -2494,7 +2525,7 @@ func (ic *IbClient) ReqRealTimeBars(reqID int64, contract *Contract, barSize int
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelRealTimeBars cancel realtime bars.
@@ -2503,7 +2534,7 @@ func (ic *IbClient) CancelRealTimeBars(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_REAL_TIME_BARS, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -2581,7 +2612,7 @@ func (ic *IbClient) ReqFundamentalData(reqID int64, contract *Contract, reportTy
 
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // CancelFundamentalData cancel fundamental data.
@@ -2595,7 +2626,7 @@ func (ic *IbClient) CancelFundamentalData(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mCANCEL_FUNDAMENTAL_DATA, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 
 }
 
@@ -2614,7 +2645,7 @@ func (ic *IbClient) ReqNewsProviders() {
 
 	msg := makeMsgBytes(mREQ_NEWS_PROVIDERS)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqNewsArticle request news article.
@@ -2644,7 +2675,7 @@ func (ic *IbClient) ReqNewsArticle(reqID int64, providerCode string, articleID s
 	}
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqHistoricalNews request historical news.
@@ -2677,7 +2708,7 @@ func (ic *IbClient) ReqHistoricalNews(reqID int64, contractID int64, providerCod
 	}
 	msg := makeMsgBytes(fields...)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 /*
@@ -2697,7 +2728,7 @@ func (ic *IbClient) QueryDisplayGroups(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mQUERY_DISPLAY_GROUPS, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // SubscribeToGroupEvents subcribe the group events.
@@ -2720,7 +2751,7 @@ func (ic *IbClient) SubscribeToGroupEvents(reqID int64, groupID int) {
 	const v = 1
 	msg := makeMsgBytes(mSUBSCRIBE_TO_GROUP_EVENTS, v, reqID, groupID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // UpdateDisplayGroup update the display group in TWS.
@@ -2747,7 +2778,7 @@ func (ic *IbClient) UpdateDisplayGroup(reqID int64, contractInfo string) {
 	const v = 1
 	msg := makeMsgBytes(mUPDATE_DISPLAY_GROUP, v, reqID, contractInfo)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // UnsubscribeFromGroupEvents unsubcribe the display group events.
@@ -2761,7 +2792,7 @@ func (ic *IbClient) UnsubscribeFromGroupEvents(reqID int64) {
 	const v = 1
 	msg := makeMsgBytes(mUPDATE_DISPLAY_GROUP, v, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // VerifyRequest is just for IB's internal use.
@@ -2785,7 +2816,7 @@ func (ic *IbClient) VerifyRequest(apiName string, apiVersion string) {
 	const v = 1
 	msg := makeMsgBytes(mVERIFY_REQUEST, v, apiName, apiVersion)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // VerifyMessage is just for IB's internal use.
@@ -2803,7 +2834,7 @@ func (ic *IbClient) VerifyMessage(apiData string) {
 	const v = 1
 	msg := makeMsgBytes(mVERIFY_MESSAGE, v, apiData)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // VerifyAndAuthRequest is just for IB's internal use.
@@ -2827,7 +2858,7 @@ func (ic *IbClient) VerifyAndAuthRequest(apiName string, apiVersion string, opaq
 	const v = 1
 	msg := makeMsgBytes(mVERIFY_AND_AUTH_REQUEST, v, apiName, apiVersion, opaqueIsvKey)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // VerifyAndAuthMessage is just for IB's internal use.
@@ -2845,7 +2876,7 @@ func (ic *IbClient) VerifyAndAuthMessage(apiData string, xyzResponse string) {
 	const v = 1
 	msg := makeMsgBytes(mVERIFY_MESSAGE, v, apiData, xyzResponse)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqSecDefOptParams request security definition option parameters.
@@ -2865,7 +2896,7 @@ func (ic *IbClient) ReqSecDefOptParams(reqID int64, underlyingSymbol string, fut
 
 	msg := makeMsgBytes(mREQ_SEC_DEF_OPT_PARAMS, reqID, underlyingSymbol, futFopExchange, underlyingSecurityType, underlyingContractID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqSoftDollarTiers request pre-defined Soft Dollar Tiers.
@@ -2876,7 +2907,7 @@ who have configured Soft Dollar Tiers in Account Management.
 func (ic *IbClient) ReqSoftDollarTiers(reqID int64) {
 	msg := makeMsgBytes(mREQ_SOFT_DOLLAR_TIERS, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqFamilyCodes request family codes.
@@ -2888,7 +2919,7 @@ func (ic *IbClient) ReqFamilyCodes() {
 
 	msg := makeMsgBytes(mREQ_FAMILY_CODES)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqMatchingSymbols request matching symbols.
@@ -2900,7 +2931,7 @@ func (ic *IbClient) ReqMatchingSymbols(reqID int64, pattern string) {
 
 	msg := makeMsgBytes(mREQ_MATCHING_SYMBOLS, reqID, pattern)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqCurrentTime request the current system time on the server side.
@@ -2909,7 +2940,7 @@ func (ic *IbClient) ReqCurrentTime() {
 	const v = 1
 	msg := makeMsgBytes(mREQ_CURRENT_TIME, v)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 // ReqCompletedOrders request the completed orders
@@ -2920,7 +2951,7 @@ Result will be delivered via wrapper.CompletedOrder().
 func (ic *IbClient) ReqCompletedOrders(apiOnly bool) {
 	msg := makeMsgBytes(mREQ_COMPLETED_ORDERS, apiOnly)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 func (ic *IbClient) ReqWshMetaData(reqID int64) {
@@ -2931,7 +2962,7 @@ func (ic *IbClient) ReqWshMetaData(reqID int64) {
 
 	msg := makeMsgBytes(mREQ_WSH_META_DATA, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 func (ic *IbClient) CancelWshMetaData(reqID int64) {
@@ -2942,7 +2973,7 @@ func (ic *IbClient) CancelWshMetaData(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_WSH_META_DATA, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 func (ic *IbClient) ReqWshEventData(reqID int64, conID int64) {
@@ -2953,7 +2984,7 @@ func (ic *IbClient) ReqWshEventData(reqID int64, conID int64) {
 
 	msg := makeMsgBytes(mREQ_WSH_META_DATA, reqID, conID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 
 func (ic *IbClient) CancelWshEventData(reqID int64) {
@@ -2964,7 +2995,7 @@ func (ic *IbClient) CancelWshEventData(reqID int64) {
 
 	msg := makeMsgBytes(mCANCEL_WSH_EVENT_DATA, reqID)
 
-	ic.reqChan <- msg
+	ic.enqueue(msg)
 }
 //--------------------------three major goroutine -----------------------------------------------------
 /*
@@ -2976,6 +3007,13 @@ func (ic *IbClient) CancelWshEventData(reqID int64) {
 //goRequest will get the req from reqChan and send it to TWS
 func (ic *IbClient) goRequest() {
 	log.Debug("requester start")
+	// Defer order matters: wg.Done() MUST run last so that Disconnect's
+	// wg.Wait() cannot return (and its deferred reset() cannot swap the
+	// channels) until every other defer here has read whatever it reads
+	// from ic.terminatedSignal / ic.reqChan. LIFO means the first-
+	// registered defer fires last.
+	defer ic.wg.Done()
+	defer log.Debug("requester end")
 	defer func() {
 		if p := recover(); p != nil {
 			log.Error("requester panicked; tearing down connection", zap.Any("panic", p))
@@ -2983,8 +3021,6 @@ func (ic *IbClient) goRequest() {
 			ic.signalShutdown()
 		}
 	}()
-	defer log.Debug("requester end")
-	defer ic.wg.Done()
 
 requestLoop:
 	for {
@@ -3013,6 +3049,9 @@ requestLoop:
 //goReceive handle the msgBuf which is different from the offical.Not continuously read, but split first and then decode
 func (ic *IbClient) goReceive() {
 	log.Debug("receiver start")
+	// wg.Done() runs last (see goRequest for why).
+	defer ic.wg.Done()
+	defer log.Debug("receiver end")
 	defer func() {
 		if p := recover(); p != nil {
 			log.Error("receiver panicked; tearing down connection", zap.Any("panic", p))
@@ -3028,8 +3067,6 @@ func (ic *IbClient) goReceive() {
 			go ic.Disconnect()
 		}
 	}()
-	defer log.Debug("receiver end")
-	defer ic.wg.Done()
 
 	for ic.scanner.Scan() {
 		// msgChan has buffer size, so copy here to avoid underlying arrar being overwritten
@@ -3060,6 +3097,9 @@ func (ic *IbClient) goReceive() {
 //goDecode decode the fields received from the msgChan
 func (ic *IbClient) goDecode() {
 	log.Debug("decoder start")
+	// wg.Done() runs last (see goRequest for why).
+	defer ic.wg.Done()
+	defer log.Debug("decoder end")
 	defer func() {
 		if p := recover(); p != nil {
 			log.Error("decoder panicked; tearing down connection", zap.Any("panic", p))
@@ -3067,8 +3107,6 @@ func (ic *IbClient) goDecode() {
 			ic.signalShutdown()
 		}
 	}()
-	defer log.Debug("decoder end")
-	defer ic.wg.Done()
 
 decodeLoop:
 	for {
@@ -3112,16 +3150,18 @@ func (ic *IbClient) LoopUntilDone(fs ...func()) error {
 		go f()
 	}
 
+	// ctx-watcher: on cancel, initiate Disconnect. But also unblock
+	// when Disconnect fires directly (via ic.done) — otherwise the
+	// watcher parks on ctx.Done() forever after a user-driven
+	// Disconnect, leaking one goroutine per call.
 	go func() {
 		select {
 		case <-ic.ctx.Done():
 			ic.Disconnect()
+		case <-ic.done:
 		}
 	}()
 
-	select {
-	case <-ic.done:
-		return ic.err
-	}
-
+	<-ic.done
+	return ic.err
 }

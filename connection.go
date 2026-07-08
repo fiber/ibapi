@@ -68,6 +68,12 @@ func (ibconn *IbConnection) disconnect() error {
 		zap.Int64("nMsgRecv", ibconn.numMsgRecv.Load()),
 		zap.Int64("nBytesRecv", ibconn.numBytesRecv.Load()),
 	)
+	// A freshly-constructed IbConnection has a nil embedded TCPConn.
+	// Calling Close on it would nil-deref, so let Disconnect-before-
+	// Connect resolve as a no-op instead of crashing.
+	if ibconn.TCPConn == nil {
+		return nil
+	}
 	return ibconn.Close()
 }
 
