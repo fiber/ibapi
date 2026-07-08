@@ -111,17 +111,64 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`CancelCalculateImpliedVolatility(reqID)`.** Companion cancel for
   `CalculateImpliedVolatility`; upstream shipped the option-price
   pair but not the implied-vol one.
+- **`Option` + `WithLogger(*slog.Logger)`.** Functional-options
+  pattern on `NewIbClient(wrapper, opts ...Option)` for
+  construction-time configuration. Coexists with the imperative
+  Python-style setters — callers choose whichever style fits.
 
 ### Changed
 
 - **Module path**: `github.com/hadrianl/ibapi` → `github.com/fiber/ibapi`.
 - **`Order.Solictied` → `Solicited`.** Typo in the upstream field name
   (both the struct field and the two decoder sites that populated it).
+- **Logger: `go.uber.org/zap` → stdlib `log/slog`.** Removes the only
+  external dependency in the fork. Package-scoped `log *slog.Logger`
+  defaults to `slog.Default()`. Public API replacements:
+  `SetAPILogger(zap.Config, ...zap.Option) error` → `SetLogger(*slog.Logger)`
+  and `GetLogger() *zap.Logger` → `Logger() *slog.Logger`. All ~250
+  `zap.X("k", v)` structured-field calls rewritten to slog's
+  key-value varargs form. Sixteen production `log.Panic` sites (slog
+  has no `Panic`) rewritten as `log.Error(...) + panic(value)` — the
+  panic value is the underlying error where available, otherwise a
+  descriptive string; existing worker-recover paths catch these the
+  same way. See panic report below.
 
 ### Removed
 
 - **Dead `IbClient.timeChan chan time.Time` field.** Declared,
   initialized nowhere, never read.
+- **`go.uber.org/zap` dependency.** `go.mod` now lists zero external
+  requires; `go.sum` is empty. Go floor bumped to 1.22 for `log/slog`.
+
+## Panic sites (post slog migration)
+
+Every remaining production `panic()` call in this package is caught by
+one of the worker goroutines' recover blocks (`goRequest`, `goReceive`,
+`goDecode`), converted to an `ic.err` value via `panicError`, and
+followed by `signalShutdown()` — see the panic-restart fix. In other
+words: a panic here tears down the connection cleanly rather than
+crashing the process.
+
+- `utils.go MsgBuffer.readInt / readIntCheckUnset / readFloat /
+  readFloatCheckUnset / readBool / readString` — panic on
+  `bytes.Buffer.ReadBytes` failure or `strconv.ParseInt/Float`
+  failure. Effectively "malformed protocol message from TWS."
+- `utils.go decodeInt` — same shape; unused by the current decoder
+  but left for API compatibility.
+- `utils.go makeMsgBytes` — panics if a caller passes a field type
+  the encoder doesn't handle. Programmer error, not runtime data.
+- `utils.go handleEmpty` — panics on any type other than int64/float64.
+  Programmer error.
+- `utils.go InitDefault` — panics on an unrecognized struct tag
+  value. Programmer error (typo'd tag).
+- `decoder.go processUpdateAccountTime` — panics on `time.Parse`
+  failure. TWS protocol violation.
+- `client.go PlaceOrder / ReqMktData / ReqMktDepth` — two "not
+  supported" panics on `mktDataOptions` / `mktDepthOptions` slices
+  documented as internal-use only. Panics only if a caller passes a
+  non-empty slice.
+- `orderCondition.go decodeCondition` — panics on unknown condition
+  type. Wire-format violation or missing case in the switch.
 
 ## Deliberately not fixed (yet)
 

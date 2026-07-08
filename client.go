@@ -6,13 +6,12 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const (
@@ -54,13 +53,41 @@ type IbClient struct {
 	err              error
 }
 
-// NewIbClient create IbClient with wrapper
-func NewIbClient(wrapper IbWrapper) *IbClient {
+// Option configures an IbClient at construction time. Options run
+// before reset(), so they can install package-scoped state (logger,
+// etc.) safely. The pattern matches the imperative Python-style
+// setters (SetContext, SetConnectionOptions, SetWrapper) for
+// consistency — either call style works, options just consolidate
+// the common ones into one call.
+type Option func(*IbClient)
+
+// WithLogger installs a structured logger for the ibapi package.
+// Nil is coerced to slog.Default(). Equivalent to calling SetLogger
+// after NewIbClient — provided so the common case (construct + set
+// logger) is a single call.
+//
+// Currently package-scoped: the logger is shared across all IbClient
+// instances in the process. Per-instance loggers would need decoder
+// / connection to hold their own references; deferred until a real
+// use case demands it.
+func WithLogger(l *slog.Logger) Option {
+	return func(_ *IbClient) { SetLogger(l) }
+}
+
+// NewIbClient creates an IbClient bound to the given wrapper. Optional
+// Option values (WithLogger, ...) apply construction-time
+// configuration; any of the Python-style setters (SetContext,
+// SetConnectionOptions, SetWrapper) remain available for callers that
+// prefer the imperative style.
+func NewIbClient(wrapper IbWrapper, opts ...Option) *IbClient {
 	ic := &IbClient{
 		wrapper: wrapper,
 		decoder: ibDecoder{wrapper: wrapper},
 	}
-	log.Debug("set wrapper", zap.Reflect("wrapper", wrapper))
+	for _, opt := range opts {
+		opt(ic)
+	}
+	log.Debug("set wrapper", "wrapper", wrapper)
 	ic.reset()
 
 	return ic
@@ -79,7 +106,7 @@ func (ic *IbClient) ConnState() int {
 
 func (ic *IbClient) setConnState(connState int32) {
 	preState := ic.conn.state.Swap(connState)
-	log.Debug("change connection state", zap.Int32("previous", preState), zap.Int32("current", connState))
+	log.Debug("change connection state", "previous", preState, "current", connState)
 }
 
 // GetReqID before request data or place order
@@ -100,7 +127,7 @@ func (ic *IbClient) SetWrapper(wrapper IbWrapper) error {
 	}
 	ic.wrapper = wrapper
 	ic.decoder = ibDecoder{wrapper: ic.wrapper}
-	log.Debug("set wrapper", zap.Reflect("wrapper", wrapper))
+	log.Debug("set wrapper", "wrapper", wrapper)
 	return nil
 }
 
@@ -132,7 +159,7 @@ func (ic *IbClient) SetConnectionOptions(opts string) error {
 func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 
 	ic.host, ic.port, ic.clientID = host, port, clientID
-	log.Info("Connect to client", zap.String("host", host), zap.Int("port", port), zap.Int64("clientID", clientID))
+	log.Info("Connect to client", "host", host, "port", port, "clientID", clientID)
 	ic.setConnState(CONNECTING)
 	if err := ic.conn.connect(host, port); err != nil {
 		ic.wrapper.Error(NO_VALID_ID, CONNECT_FAIL.code, CONNECT_FAIL.msg)
@@ -251,7 +278,7 @@ func (ic *IbClient) startAPI() error {
 		startAPI = makeMsgBytes(mSTART_API, v, ic.clientID)
 	}
 
-	log.Debug("start API", zap.Binary("bytes", startAPI))
+	log.Debug("start API", "bytes", startAPI)
 	if _, err := ic.writer.Write(startAPI); err != nil {
 		return err
 	}
@@ -282,7 +309,7 @@ func (ic *IbClient) HandShake() error {
 	msg.Write(head)
 	msg.Write(sizeofCV)
 	msg.Write(clientVersion)
-	log.Debug("send handShake header", zap.Binary("header", msg.Bytes()))
+	log.Debug("send handShake header", "header", msg.Bytes())
 	if _, err := ic.writer.Write(msg.Bytes()); err != nil {
 		return err
 	}
@@ -309,8 +336,8 @@ func (ic *IbClient) HandShake() error {
 	// ic.decoder.errChan = make(chan error, 100)
 	ic.decoder.setmsgID2process()
 
-	log.Info("handShake info", zap.Int("serverVersion", ic.serverVersion))
-	log.Info("handShake info", zap.String("connectionTime", ic.connTime))
+	log.Info("handShake info", "serverVersion", ic.serverVersion)
+	log.Info("handShake info", "connectionTime", ic.connTime)
 
 	// send startAPI to tell server that client is ready
 	if err := ic.startAPI(); err != nil {
@@ -541,7 +568,8 @@ func (ic *IbClient) ReqMktData(reqID int64, contract *Contract, genericTickList 
 
 	if ic.serverVersion >= mMIN_SERVER_VER_LINKING {
 		if len(mktDataOptions) > 0 {
-			log.Panic("not supported")
+			log.Error("reqMktData: mktDataOptions is documented as internal-use only", "opts", mktDataOptions)
+			panic("reqMktData: mktDataOptions not supported")
 		}
 		fields = append(fields, "")
 	}
@@ -1944,7 +1972,8 @@ func (ic *IbClient) ReqMktDepth(reqID int64, contract *Contract, numRows int, is
 	if ic.serverVersion >= mMIN_SERVER_VER_LINKING {
 		//current doc says this part if for "internal use only" -> won't support it
 		if len(mktDepthOptions) > 0 {
-			log.Panic("not supported")
+			log.Error("reqMktDepth: mktDepthOptions is documented as internal-use only", "opts", mktDepthOptions)
+			panic("reqMktDepth: mktDepthOptions not supported")
 		}
 
 		fields = append(fields, "")
@@ -3042,7 +3071,7 @@ func (ic *IbClient) goRequest() {
 	defer log.Debug("requester end")
 	defer func() {
 		if p := recover(); p != nil {
-			log.Error("requester panicked; tearing down connection", zap.Any("panic", p))
+			log.Error("requester panicked; tearing down connection", "panic", p)
 			ic.setErr(panicError("requester", p))
 			ic.signalShutdown()
 		}
@@ -3060,7 +3089,7 @@ requestLoop:
 			nn, err := ic.writer.Write(req)
 			err = ic.writer.Flush()
 			if err != nil {
-				log.Error("write req error", zap.Int("nbytes", nn), zap.Binary("reqMsg", req), zap.Error(err))
+				log.Error("write req error", "nbytes", nn, "reqMsg", req, "error", err)
 				ic.writer.Reset(ic.conn)
 				ic.errChan <- err
 			}
@@ -3080,7 +3109,7 @@ func (ic *IbClient) goReceive() {
 	defer log.Debug("receiver end")
 	defer func() {
 		if p := recover(); p != nil {
-			log.Error("receiver panicked; tearing down connection", zap.Any("panic", p))
+			log.Error("receiver panicked; tearing down connection", "panic", p)
 			ic.setErr(panicError("receiver", p))
 			ic.signalShutdown()
 			return
@@ -3113,7 +3142,7 @@ func (ic *IbClient) goReceive() {
 			ic.wrapper.Error(NO_VALID_ID, BAD_LENGTH.code, fmt.Sprintf("%s:%d:%s", BAD_LENGTH.msg, len(errBytes), errBytes))
 			ic.setErr(fmt.Errorf("receiver: %s: %w", BAD_LENGTH.msg, err))
 		default:
-			log.Error("scanner error", zap.Error(err))
+			log.Error("scanner error", "error", err)
 			ic.setErr(fmt.Errorf("receiver: scanner error: %w", err))
 		}
 	}
@@ -3128,7 +3157,7 @@ func (ic *IbClient) goDecode() {
 	defer log.Debug("decoder end")
 	defer func() {
 		if p := recover(); p != nil {
-			log.Error("decoder panicked; tearing down connection", zap.Any("panic", p))
+			log.Error("decoder panicked; tearing down connection", "panic", p)
 			ic.setErr(panicError("decoder", p))
 			ic.signalShutdown()
 		}
@@ -3140,7 +3169,7 @@ decodeLoop:
 		case m := <-ic.msgChan:
 			ic.decoder.interpret(m)
 		case e := <-ic.errChan:
-			log.Error("got client error in decode loop", zap.Error(e))
+			log.Error("got client error in decode loop", "error", e)
 		// case e := <-ic.decoder.errChan:
 		// 	ic.wrapper.Error(NO_VALID_ID, BAD_MESSAGE.code, BAD_MESSAGE.msg+e.Error())
 		case <-ic.terminatedSignal:

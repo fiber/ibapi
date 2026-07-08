@@ -3,8 +3,6 @@ package ibapi
 import (
 	"fmt"
 	"testing"
-
-	"go.uber.org/zap"
 )
 
 func TestConnection(t *testing.T) {
@@ -14,7 +12,7 @@ func TestConnection(t *testing.T) {
 	buf := make([]byte, 4096)
 	_, err := conn.Read(buf)
 	if err != nil {
-		log.Panic("read error", zap.Error(err))
+		t.Fatalf("read error: %v", err)
 	}
 	fmt.Println(string(buf))
 	conn.disconnect()

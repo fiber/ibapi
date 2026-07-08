@@ -2,6 +2,8 @@ package ibapi
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -138,6 +140,30 @@ func TestLoopUntilDoneWatcherReleasedOnDirectDisconnect(t *testing.T) {
 	// checks that the watcher's ctx.Done() branch isn't the only exit.
 	if err := ic.Disconnect(); err != nil {
 		t.Fatalf("second Disconnect: %v", err)
+	}
+}
+
+// TestWithLoggerAndSetLogger verifies both configuration paths install
+// a caller-supplied logger and that nil coerces to slog.Default().
+func TestWithLoggerAndSetLogger(t *testing.T) {
+	custom := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	NewIbClient(new(Wrapper), WithLogger(custom))
+	if Logger() != custom {
+		t.Fatal("WithLogger did not install the supplied logger")
+	}
+
+	SetLogger(nil)
+	if Logger() == nil {
+		t.Fatal("SetLogger(nil) left log nil; should coerce to slog.Default()")
+	}
+	if Logger() != slog.Default() {
+		t.Fatal("SetLogger(nil) did not coerce to slog.Default()")
+	}
+
+	SetLogger(custom)
+	if Logger() != custom {
+		t.Fatal("SetLogger did not install the supplied logger")
 	}
 }
 

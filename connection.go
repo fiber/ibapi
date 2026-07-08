@@ -6,8 +6,6 @@ import (
 	"net"
 	"strconv"
 	"sync/atomic"
-
-	"go.uber.org/zap"
 )
 
 // IbConnection wrap the tcp connection with TWS or Gateway.
@@ -34,7 +32,7 @@ func (ibconn *IbConnection) Write(bs []byte) (int, error) {
 	ibconn.numBytesSent.Add(int64(n))
 	ibconn.numMsgSent.Add(1)
 
-	log.Debug("conn write", zap.Int("nBytes", n))
+	log.Debug("conn write", "nBytes", n)
 
 	return n, err
 }
@@ -45,7 +43,7 @@ func (ibconn *IbConnection) Read(bs []byte) (int, error) {
 	ibconn.numBytesRecv.Add(int64(n))
 	ibconn.numMsgRecv.Add(1)
 
-	log.Debug("conn read", zap.Int("nBytes", n))
+	log.Debug("conn read", "nBytes", n)
 
 	return n, err
 }
@@ -63,10 +61,10 @@ func (ibconn *IbConnection) reset() {
 
 func (ibconn *IbConnection) disconnect() error {
 	log.Debug("conn disconnect",
-		zap.Int64("nMsgSent", ibconn.numMsgSent.Load()),
-		zap.Int64("nBytesSent", ibconn.numBytesSent.Load()),
-		zap.Int64("nMsgRecv", ibconn.numMsgRecv.Load()),
-		zap.Int64("nBytesRecv", ibconn.numBytesRecv.Load()),
+		"nMsgSent", ibconn.numMsgSent.Load(),
+		"nBytesSent", ibconn.numBytesSent.Load(),
+		"nMsgRecv", ibconn.numMsgRecv.Load(),
+		"nBytesRecv", ibconn.numBytesRecv.Load(),
 	)
 	// A freshly-constructed IbConnection has a nil embedded TCPConn.
 	// Calling Close on it would nil-deref, so let Disconnect-before-
@@ -86,16 +84,16 @@ func (ibconn *IbConnection) connect(host string, port int) error {
 
 	server := ibconn.host + ":" + strconv.Itoa(port)
 	if addr, err = net.ResolveTCPAddr("tcp4", server); err != nil {
-		log.Error("failed to resove tcp address", zap.Error(err), zap.String("host", server))
+		log.Error("failed to resove tcp address", "error", err, "host", server)
 		return err
 	}
 
 	if ibconn.TCPConn, err = net.DialTCP("tcp4", nil, addr); err != nil {
-		log.Error("failed to dial tcp", zap.Error(err), zap.Any("address", addr))
+		log.Error("failed to dial tcp", "error", err, "address", addr)
 		return err
 	}
 
-	log.Debug("tcp socket connected", zap.Any("address", ibconn.TCPConn.RemoteAddr()))
+	log.Debug("tcp socket connected", "address", ibconn.TCPConn.RemoteAddr())
 
 	return err
 }

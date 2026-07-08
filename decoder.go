@@ -3,8 +3,6 @@ package ibapi
 import (
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const (
@@ -38,19 +36,19 @@ func (d *ibDecoder) interpret(msgBytes []byte) {
 	// // if decode error ocours,handle the error
 	// defer func() {
 	// 	if err := recover(); err != nil {
-	// 		log.Error("failed to decode", zap.Error(err.(error)))
+	// 		log.Error("failed to decode", "error", err.(error))
 	// 		d.errChan <- err.(error)
 	// 	}
 	// }()
 
-	// log.Debug("interpret", zap.Binary("MsgBytes", msgBuf.Bytes()))
+	// log.Debug("interpret", "MsgBytes", msgBuf.Bytes())
 
 	// read the msg type
 	MsgID := msgBuf.readInt()
 	if processer, ok := d.msgID2process[MsgID]; ok {
 		processer(msgBuf)
 	} else {
-		log.Warn("msg ID not found!!!", zap.Int64("msgID", MsgID), zap.Binary("MsgBytes", msgBuf.Bytes()))
+		log.Warn("msg ID not found!!!", "msgID", MsgID, "MsgBytes", msgBuf.Bytes())
 	}
 
 }
@@ -204,7 +202,8 @@ func (d *ibDecoder) wrapUpdateAccountTime(msgBuf *MsgBuffer) {
 	// time.
 	t, err := time.ParseInLocation("04:05", ts, time.Local)
 	if err != nil {
-		log.Panic("failed to parse account time", zap.Error(err))
+		log.Error("failed to parse account time", "error", err)
+		panic(err)
 	}
 	t = t.AddDate(today.Year(), int(today.Month())-1, today.Day()-1)
 

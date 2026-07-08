@@ -3,8 +3,6 @@ package ibapi
 import (
 	"sync/atomic"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 // IbWrapper contain the funcs to handle the msg from TWS or Gateway
@@ -118,113 +116,113 @@ func (w Wrapper) ConnectionClosed() {
 
 func (w *Wrapper) NextValidID(reqID int64) {
 	atomic.StoreInt64(&w.orderID, reqID)
-	log.With(zap.Int64("reqID", reqID)).Info("<NextValidID>")
+	log.With("reqID", reqID).Info("<NextValidID>")
 }
 
 func (w Wrapper) ManagedAccounts(accountsList []string) {
-	log.Info("<ManagedAccounts>", zap.Strings("accountList", accountsList))
+	log.Info("<ManagedAccounts>", "accountList", accountsList)
 }
 
 func (w Wrapper) TickPrice(reqID int64, tickType int64, price float64, attrib TickAttrib) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickPrice>", zap.Int64("tickType", tickType), zap.Float64("price", price))
+	log.With("reqID", reqID).Info("<TickPrice>", "tickType", tickType, "price", price)
 }
 
 func (w Wrapper) UpdateAccountTime(accTime time.Time) {
-	log.Info("<UpdateAccountTime>", zap.Time("accountTime", accTime))
+	log.Info("<UpdateAccountTime>", "accountTime", accTime)
 }
 
 func (w Wrapper) UpdateAccountValue(tag string, value string, currency string, account string) {
-	log.Info("<UpdateAccountValue>", zap.String("tag", tag), zap.String("value", value), zap.String("currency", currency), zap.String("account", account))
+	log.Info("<UpdateAccountValue>", "tag", tag, "value", value, "currency", currency, "account", account)
 }
 
 func (w Wrapper) AccountDownloadEnd(accName string) {
-	log.Info("<AccountDownloadEnd>", zap.String("accountName", accName))
+	log.Info("<AccountDownloadEnd>", "accountName", accName)
 }
 
 func (w Wrapper) AccountUpdateMulti(reqID int64, account string, modelCode string, tag string, value string, currency string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<AccountUpdateMulti>",
-		zap.String("account", account),
-		zap.String("modelCode", modelCode),
-		zap.String("tag", tag),
-		zap.String("value", value),
-		zap.String("curreny", currency),
+	log.With("reqID", reqID).Info("<AccountUpdateMulti>",
+		"account", account,
+		"modelCode", modelCode,
+		"tag", tag,
+		"value", value,
+		"curreny", currency,
 	)
 }
 
 func (w Wrapper) AccountUpdateMultiEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<AccountUpdateMultiEnd>")
+	log.With("reqID", reqID).Info("<AccountUpdateMultiEnd>")
 }
 
 func (w Wrapper) AccountSummary(reqID int64, account string, tag string, value string, currency string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<AccountSummary>",
-		zap.String("account", account),
-		zap.String("tag", tag),
-		zap.String("value", value),
-		zap.String("curreny", currency),
+	log.With("reqID", reqID).Info("<AccountSummary>",
+		"account", account,
+		"tag", tag,
+		"value", value,
+		"curreny", currency,
 	)
 
 }
 
 func (w Wrapper) AccountSummaryEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<AccountSummaryEnd>")
+	log.With("reqID", reqID).Info("<AccountSummaryEnd>")
 }
 
 func (w Wrapper) VerifyMessageAPI(apiData string) {
-	log.Info("<VerifyMessageAPI>", zap.String("apiData", apiData))
+	log.Info("<VerifyMessageAPI>", "apiData", apiData)
 }
 
 func (w Wrapper) VerifyCompleted(isSuccessful bool, err string) {
-	log.Info("<VerifyCompleted>", zap.Bool("isSuccessful", isSuccessful), zap.String("error", err))
+	log.Info("<VerifyCompleted>", "isSuccessful", isSuccessful, "error", err)
 }
 
 func (w Wrapper) VerifyAndAuthMessageAPI(apiData string, xyzChallange string) {
-	log.Info("<VerifyMessageAPI>", zap.String("apiData", apiData), zap.String("xyzChallange", xyzChallange))
+	log.Info("<VerifyMessageAPI>", "apiData", apiData, "xyzChallange", xyzChallange)
 }
 
 func (w Wrapper) VerifyAndAuthCompleted(isSuccessful bool, err string) {
-	log.Info("<VerifyCompleted>", zap.Bool("isSuccessful", isSuccessful), zap.String("error", err))
+	log.Info("<VerifyCompleted>", "isSuccessful", isSuccessful, "error", err)
 }
 
 func (w Wrapper) DisplayGroupList(reqID int64, groups string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<DisplayGroupList>", zap.String("groups", groups))
+	log.With("reqID", reqID).Info("<DisplayGroupList>", "groups", groups)
 }
 
 func (w Wrapper) DisplayGroupUpdated(reqID int64, contractInfo string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<DisplayGroupUpdated>", zap.String("contractInfo", contractInfo))
+	log.With("reqID", reqID).Info("<DisplayGroupUpdated>", "contractInfo", contractInfo)
 }
 
 func (w Wrapper) PositionMulti(reqID int64, account string, modelCode string, contract *Contract, position float64, avgCost float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<PositionMulti>",
-		zap.String("account", account),
-		zap.String("modelCode", modelCode),
-		zap.Any("contract", contract),
-		zap.Float64("position", position),
-		zap.Float64("avgCost", avgCost),
+	log.With("reqID", reqID).Info("<PositionMulti>",
+		"account", account,
+		"modelCode", modelCode,
+		"contract", contract,
+		"position", position,
+		"avgCost", avgCost,
 	)
 }
 
 func (w Wrapper) PositionMultiEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<PositionMultiEnd>")
+	log.With("reqID", reqID).Info("<PositionMultiEnd>")
 }
 
 func (w Wrapper) UpdatePortfolio(contract *Contract, position float64, marketPrice float64, marketValue float64, averageCost float64, unrealizedPNL float64, realizedPNL float64, accName string) {
 	log.Info("<UpdatePortfolio>",
-		zap.String("localSymbol", contract.LocalSymbol),
-		zap.Float64("position", position),
-		zap.Float64("marketPrice", marketPrice),
-		zap.Float64("averageCost", averageCost),
-		zap.Float64("unrealizedPNL", unrealizedPNL),
-		zap.Float64("realizedPNL", realizedPNL),
-		zap.String("accName", accName),
+		"localSymbol", contract.LocalSymbol,
+		"position", position,
+		"marketPrice", marketPrice,
+		"averageCost", averageCost,
+		"unrealizedPNL", unrealizedPNL,
+		"realizedPNL", realizedPNL,
+		"accName", accName,
 	)
 }
 
 func (w Wrapper) Position(account string, contract *Contract, position float64, avgCost float64) {
 	log.Info("<UpdatePortfolio>",
-		zap.String("account", account),
-		zap.Any("contract", contract),
-		zap.Float64("position", position),
-		zap.Float64("avgCost", avgCost),
+		"account", account,
+		"contract", contract,
+		"position", position,
+		"avgCost", avgCost,
 	)
 }
 
@@ -233,28 +231,28 @@ func (w Wrapper) PositionEnd() {
 }
 
 func (w Wrapper) Pnl(reqID int64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<PNL>",
-		zap.Float64("dailyPnL", dailyPnL),
-		zap.Float64("unrealizedPnL", unrealizedPnL),
-		zap.Float64("realizedPnL", realizedPnL),
+	log.With("reqID", reqID).Info("<PNL>",
+		"dailyPnL", dailyPnL,
+		"unrealizedPnL", unrealizedPnL,
+		"realizedPnL", realizedPnL,
 	)
 }
 
 func (w Wrapper) PnlSingle(reqID int64, position float64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64, value float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<PNLSingle>",
-		zap.Float64("position", position),
-		zap.Float64("dailyPnL", dailyPnL),
-		zap.Float64("unrealizedPnL", unrealizedPnL),
-		zap.Float64("realizedPnL", realizedPnL),
-		zap.Float64("value", value),
+	log.With("reqID", reqID).Info("<PNLSingle>",
+		"position", position,
+		"dailyPnL", dailyPnL,
+		"unrealizedPnL", unrealizedPnL,
+		"realizedPnL", realizedPnL,
+		"value", value,
 	)
 }
 
 func (w Wrapper) OpenOrder(orderID int64, contract *Contract, order *Order, orderState *OrderState) {
-	log.With(zap.Int64("orderID", orderID)).Info("<OpenOrder>",
-		zap.Any("contract", contract),
-		zap.Any("order", order),
-		zap.Any("orderState", orderState),
+	log.With("orderID", orderID).Info("<OpenOrder>",
+		"contract", contract,
+		"order", order,
+		"orderState", orderState,
 	)
 }
 
@@ -264,212 +262,212 @@ func (w Wrapper) OpenOrderEnd() {
 }
 
 func (w Wrapper) OrderStatus(orderID int64, status string, filled float64, remaining float64, avgFillPrice float64, permID int64, parentID int64, lastFillPrice float64, clientID int64, whyHeld string, mktCapPrice float64) {
-	log.With(zap.Int64("orderID", orderID)).Info("<OrderStatus>",
-		zap.String("status", status),
-		zap.Float64("filled", filled),
-		zap.Float64("remaining", remaining),
-		zap.Float64("avgFillPrice", avgFillPrice),
+	log.With("orderID", orderID).Info("<OrderStatus>",
+		"status", status,
+		"filled", filled,
+		"remaining", remaining,
+		"avgFillPrice", avgFillPrice,
 	)
 }
 
 func (w Wrapper) ExecDetails(reqID int64, contract *Contract, execution *Execution) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ExecDetails>",
-		zap.Any("contract", contract),
-		zap.Any("execution", execution),
+	log.With("reqID", reqID).Info("<ExecDetails>",
+		"contract", contract,
+		"execution", execution,
 	)
 }
 
 func (w Wrapper) ExecDetailsEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ExecDetailsEnd>")
+	log.With("reqID", reqID).Info("<ExecDetailsEnd>")
 }
 
 func (w Wrapper) DeltaNeutralValidation(reqID int64, deltaNeutralContract DeltaNeutralContract) {
-	log.With(zap.Int64("reqID", reqID)).Info("<DeltaNeutralValidation>",
-		zap.Any("deltaNeutralContract", deltaNeutralContract),
+	log.With("reqID", reqID).Info("<DeltaNeutralValidation>",
+		"deltaNeutralContract", deltaNeutralContract,
 	)
 }
 
 func (w Wrapper) CommissionReport(commissionReport CommissionReport) {
 	log.Info("<CommissionReport>",
-		zap.Any("commissionReport", commissionReport),
+		"commissionReport", commissionReport,
 	)
 }
 
 func (w Wrapper) OrderBound(reqID int64, apiClientID int64, apiOrderID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<OrderBound>",
-		zap.Int64("apiClientID", apiClientID),
-		zap.Int64("apiOrderID", apiOrderID),
+	log.With("reqID", reqID).Info("<OrderBound>",
+		"apiClientID", apiClientID,
+		"apiOrderID", apiOrderID,
 	)
 }
 
 func (w Wrapper) ContractDetails(reqID int64, conDetails *ContractDetails) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ContractDetails>",
-		zap.Any("conDetails", conDetails),
+	log.With("reqID", reqID).Info("<ContractDetails>",
+		"conDetails", conDetails,
 	)
 }
 
 func (w Wrapper) ContractDetailsEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ContractDetailsEnd>")
+	log.With("reqID", reqID).Info("<ContractDetailsEnd>")
 }
 
 func (w Wrapper) BondContractDetails(reqID int64, conDetails *ContractDetails) {
-	log.With(zap.Int64("reqID", reqID)).Info("<BondContractDetails>",
-		zap.Any("conDetails", conDetails),
+	log.With("reqID", reqID).Info("<BondContractDetails>",
+		"conDetails", conDetails,
 	)
 }
 
 func (w Wrapper) SymbolSamples(reqID int64, contractDescriptions []ContractDescription) {
-	log.With(zap.Int64("reqID", reqID)).Info("<SymbolSamples>",
-		zap.Any("contractDescriptions", contractDescriptions),
+	log.With("reqID", reqID).Info("<SymbolSamples>",
+		"contractDescriptions", contractDescriptions,
 	)
 }
 
 func (w Wrapper) SmartComponents(reqID int64, smartComps []SmartComponent) {
-	log.With(zap.Int64("reqID", reqID)).Info("<SmartComponents>",
-		zap.Any("smartComps", smartComps),
+	log.With("reqID", reqID).Info("<SmartComponents>",
+		"smartComps", smartComps,
 	)
 }
 
 func (w Wrapper) MarketRule(marketRuleID int64, priceIncrements []PriceIncrement) {
 	log.Info("<MarketRule>",
-		zap.Int64("marketRuleID", marketRuleID),
-		zap.Any("priceIncrements", priceIncrements),
+		"marketRuleID", marketRuleID,
+		"priceIncrements", priceIncrements,
 	)
 }
 
 func (w Wrapper) RealtimeBar(reqID int64, time int64, open float64, high float64, low float64, close float64, volume float64, wap float64, count int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<RealtimeBar>",
-		zap.Int64("time", time),
-		zap.Float64("open", open),
-		zap.Float64("high", high),
-		zap.Float64("low", low),
-		zap.Float64("close", close),
-		zap.Float64("volume", volume),
-		zap.Float64("wap", wap),
-		zap.Int64("count", count),
+	log.With("reqID", reqID).Info("<RealtimeBar>",
+		"time", time,
+		"open", open,
+		"high", high,
+		"low", low,
+		"close", close,
+		"volume", volume,
+		"wap", wap,
+		"count", count,
 	)
 }
 
 func (w Wrapper) HistoricalData(reqID int64, bar *BarData) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalData>",
-		zap.Any("bar", bar),
+	log.With("reqID", reqID).Info("<HistoricalData>",
+		"bar", bar,
 	)
 }
 
 func (w Wrapper) HistoricalDataEnd(reqID int64, startDateStr string, endDateStr string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalDataEnd>",
-		zap.String("startDate", startDateStr),
-		zap.String("endDate", endDateStr),
+	log.With("reqID", reqID).Info("<HistoricalDataEnd>",
+		"startDate", startDateStr,
+		"endDate", endDateStr,
 	)
 }
 
 func (w Wrapper) HistoricalDataUpdate(reqID int64, bar *BarData) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalDataUpdate>",
-		zap.Any("bar", bar),
+	log.With("reqID", reqID).Info("<HistoricalDataUpdate>",
+		"bar", bar,
 	)
 }
 
 func (w Wrapper) HeadTimestamp(reqID int64, headTimestamp string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HeadTimestamp>",
-		zap.String("headTimestamp", headTimestamp),
+	log.With("reqID", reqID).Info("<HeadTimestamp>",
+		"headTimestamp", headTimestamp,
 	)
 }
 
 func (w Wrapper) HistoricalTicks(reqID int64, ticks []HistoricalTick, done bool) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalTicks>",
-		zap.Any("ticks", ticks),
-		zap.Bool("done", done),
+	log.With("reqID", reqID).Info("<HistoricalTicks>",
+		"ticks", ticks,
+		"done", done,
 	)
 }
 
 func (w Wrapper) HistoricalTicksBidAsk(reqID int64, ticks []HistoricalTickBidAsk, done bool) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalTicksBidAsk>",
-		zap.Any("ticks", ticks),
-		zap.Bool("done", done),
+	log.With("reqID", reqID).Info("<HistoricalTicksBidAsk>",
+		"ticks", ticks,
+		"done", done,
 	)
 }
 
 func (w Wrapper) HistoricalTicksLast(reqID int64, ticks []HistoricalTickLast, done bool) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalTicksLast>",
-		zap.Any("ticks", ticks),
-		zap.Bool("done", done),
+	log.With("reqID", reqID).Info("<HistoricalTicksLast>",
+		"ticks", ticks,
+		"done", done,
 	)
 }
 
 func (w Wrapper) TickSize(reqID int64, tickType int64, size float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickSize>",
-		zap.Int64("tickType", tickType),
-		zap.Float64("size", size),
+	log.With("reqID", reqID).Info("<TickSize>",
+		"tickType", tickType,
+		"size", size,
 	)
 }
 
 func (w Wrapper) TickSnapshotEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickSnapshotEnd>")
+	log.With("reqID", reqID).Info("<TickSnapshotEnd>")
 }
 
 func (w Wrapper) MarketDataType(reqID int64, marketDataType int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<MarketDataType>",
-		zap.Int64("marketDataType", marketDataType),
+	log.With("reqID", reqID).Info("<MarketDataType>",
+		"marketDataType", marketDataType,
 	)
 }
 
 func (w Wrapper) TickByTickAllLast(reqID int64, tickType int64, time int64, price float64, size float64, tickAttribLast TickAttribLast, exchange string, specialConditions string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickByTickAllLast>",
-		zap.Int64("tickType", tickType),
-		zap.Int64("time", time),
-		zap.Float64("price", price),
-		zap.Float64("size", size),
+	log.With("reqID", reqID).Info("<TickByTickAllLast>",
+		"tickType", tickType,
+		"time", time,
+		"price", price,
+		"size", size,
 	)
 }
 
 func (w Wrapper) TickByTickBidAsk(reqID int64, time int64, bidPrice float64, askPrice float64, bidSize float64, askSize float64, tickAttribBidAsk TickAttribBidAsk) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickByTickBidAsk>",
-		zap.Int64("time", time),
-		zap.Float64("bidPrice", bidPrice),
-		zap.Float64("askPrice", askPrice),
-		zap.Float64("bidSize", bidSize),
-		zap.Float64("askSize", askSize),
+	log.With("reqID", reqID).Info("<TickByTickBidAsk>",
+		"time", time,
+		"bidPrice", bidPrice,
+		"askPrice", askPrice,
+		"bidSize", bidSize,
+		"askSize", askSize,
 	)
 }
 
 func (w Wrapper) TickByTickMidPoint(reqID int64, time int64, midPoint float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickByTickMidPoint>",
-		zap.Int64("time", time),
-		zap.Float64("midPoint", midPoint),
+	log.With("reqID", reqID).Info("<TickByTickMidPoint>",
+		"time", time,
+		"midPoint", midPoint,
 	)
 }
 
 func (w Wrapper) TickString(reqID int64, tickType int64, value string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickString>",
-		zap.Int64("tickType", tickType),
-		zap.String("value", value),
+	log.With("reqID", reqID).Info("<TickString>",
+		"tickType", tickType,
+		"value", value,
 	)
 }
 
 func (w Wrapper) TickGeneric(reqID int64, tickType int64, value float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickGeneric>",
-		zap.Int64("tickType", tickType),
-		zap.Float64("value", value),
+	log.With("reqID", reqID).Info("<TickGeneric>",
+		"tickType", tickType,
+		"value", value,
 	)
 }
 
 func (w Wrapper) TickEFP(reqID int64, tickType int64, basisPoints float64, formattedBasisPoints string, totalDividends float64, holdDays int64, futureLastTradeDate string, dividendImpact float64, dividendsToLastTradeDate float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickEFP>",
-		zap.Int64("tickType", tickType),
-		zap.Float64("basisPoints", basisPoints),
+	log.With("reqID", reqID).Info("<TickEFP>",
+		"tickType", tickType,
+		"basisPoints", basisPoints,
 	)
 }
 
 func (w Wrapper) TickReqParams(reqID int64, minTick float64, bboExchange string, snapshotPermissions int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickReqParams>",
-		zap.Float64("minTick", minTick),
-		zap.String("bboExchange", bboExchange),
-		zap.Int64("snapshotPermissions", snapshotPermissions),
+	log.With("reqID", reqID).Info("<TickReqParams>",
+		"minTick", minTick,
+		"bboExchange", bboExchange,
+		"snapshotPermissions", snapshotPermissions,
 	)
 }
 func (w Wrapper) MktDepthExchanges(depthMktDataDescriptions []DepthMktDataDescription) {
 	log.Info("<MktDepthExchanges>",
-		zap.Any("depthMktDataDescriptions", depthMktDataDescriptions),
+		"depthMktDataDescriptions", depthMktDataDescriptions,
 	)
 }
 
@@ -485,188 +483,188 @@ side -  0 for ask, 1 for bid
 price - the order's price
 size -  the order's size*/
 func (w Wrapper) UpdateMktDepth(reqID int64, position int64, operation int64, side int64, price float64, size float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<UpdateMktDepth>",
-		zap.Int64("position", position),
-		zap.Int64("operation", operation),
-		zap.Int64("side", side),
-		zap.Float64("price", price),
-		zap.Float64("size", size),
+	log.With("reqID", reqID).Info("<UpdateMktDepth>",
+		"position", position,
+		"operation", operation,
+		"side", side,
+		"price", price,
+		"size", size,
 	)
 }
 
 func (w Wrapper) UpdateMktDepthL2(reqID int64, position int64, marketMaker string, operation int64, side int64, price float64, size float64, isSmartDepth bool) {
-	log.With(zap.Int64("reqID", reqID)).Info("<UpdateMktDepthL2>",
-		zap.Int64("position", position),
-		zap.String("marketMaker", marketMaker),
-		zap.Int64("operation", operation),
-		zap.Int64("side", side),
-		zap.Float64("price", price),
-		zap.Float64("size", size),
-		zap.Bool("isSmartDepth", isSmartDepth),
+	log.With("reqID", reqID).Info("<UpdateMktDepthL2>",
+		"position", position,
+		"marketMaker", marketMaker,
+		"operation", operation,
+		"side", side,
+		"price", price,
+		"size", size,
+		"isSmartDepth", isSmartDepth,
 	)
 }
 
 func (w Wrapper) TickOptionComputation(reqID int64, tickType int64, tickAttrib int64, impliedVol float64, delta float64, optPrice float64, pvDiviedn float64, gamma float64, vega float64, theta float64, undPrice float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<TickOptionComputation>",
-		zap.Int64("tickType", tickType),
-		zap.Int64("tickAttrib", tickAttrib),
-		zap.Float64("impliedVol", impliedVol),
-		zap.Float64("delta", delta),
-		zap.Float64("optPrice", optPrice),
-		zap.Float64("pvDiviedn", pvDiviedn),
-		zap.Float64("gamma", gamma),
-		zap.Float64("vega", vega),
-		zap.Float64("theta", theta),
-		zap.Float64("undPrice", undPrice),
+	log.With("reqID", reqID).Info("<TickOptionComputation>",
+		"tickType", tickType,
+		"tickAttrib", tickAttrib,
+		"impliedVol", impliedVol,
+		"delta", delta,
+		"optPrice", optPrice,
+		"pvDiviedn", pvDiviedn,
+		"gamma", gamma,
+		"vega", vega,
+		"theta", theta,
+		"undPrice", undPrice,
 	)
 }
 
 func (w Wrapper) FundamentalData(reqID int64, data string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<FundamentalData>",
-		zap.String("data", data),
+	log.With("reqID", reqID).Info("<FundamentalData>",
+		"data", data,
 	)
 }
 
 func (w Wrapper) ScannerParameters(xml string) {
 	log.Info("<ScannerParameters>",
-		zap.String("xml", xml),
+		"xml", xml,
 	)
 
 }
 
 func (w Wrapper) ScannerData(reqID int64, rank int64, conDetails *ContractDetails, distance string, benchmark string, projection string, legs string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ScannerData>",
-		zap.Int64("rank", rank),
-		zap.Any("conDetails", conDetails),
-		zap.String("distance", distance),
-		zap.String("benchmark", benchmark),
-		zap.String("projection", projection),
-		zap.String("legs", legs),
+	log.With("reqID", reqID).Info("<ScannerData>",
+		"rank", rank,
+		"conDetails", conDetails,
+		"distance", distance,
+		"benchmark", benchmark,
+		"projection", projection,
+		"legs", legs,
 	)
 }
 
 func (w Wrapper) ScannerDataEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ScannerDataEnd>")
+	log.With("reqID", reqID).Info("<ScannerDataEnd>")
 }
 
 func (w Wrapper) HistogramData(reqID int64, histogram []HistogramData) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistogramData>",
-		zap.Any("histogram", histogram),
+	log.With("reqID", reqID).Info("<HistogramData>",
+		"histogram", histogram,
 	)
 }
 
 func (w Wrapper) RerouteMktDataReq(reqID int64, contractID int64, exchange string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<RerouteMktDataReq>",
-		zap.Int64("contractID", contractID),
-		zap.String("exchange", exchange),
+	log.With("reqID", reqID).Info("<RerouteMktDataReq>",
+		"contractID", contractID,
+		"exchange", exchange,
 	)
 }
 
 func (w Wrapper) RerouteMktDepthReq(reqID int64, contractID int64, exchange string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<RerouteMktDepthReq>",
-		zap.Int64("contractID", contractID),
-		zap.String("exchange", exchange),
+	log.With("reqID", reqID).Info("<RerouteMktDepthReq>",
+		"contractID", contractID,
+		"exchange", exchange,
 	)
 }
 
 func (w Wrapper) SecurityDefinitionOptionParameter(reqID int64, exchange string, underlyingContractID int64, tradingClass string, multiplier string, expirations []string, strikes []float64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<SecurityDefinitionOptionParameter>",
-		zap.String("exchange", exchange),
-		zap.Int64("underlyingContractID", underlyingContractID),
-		zap.String("tradingClass", tradingClass),
-		zap.String("multiplier", multiplier),
-		zap.Strings("expirations", expirations),
-		zap.Float64s("strikes", strikes),
+	log.With("reqID", reqID).Info("<SecurityDefinitionOptionParameter>",
+		"exchange", exchange,
+		"underlyingContractID", underlyingContractID,
+		"tradingClass", tradingClass,
+		"multiplier", multiplier,
+		"expirations", expirations,
+		"strikes", strikes,
 	)
 }
 
 func (w Wrapper) SecurityDefinitionOptionParameterEnd(reqID int64) {
-	log.With(zap.Int64("reqID", reqID)).Info("<SecurityDefinitionOptionParameterEnd>")
+	log.With("reqID", reqID).Info("<SecurityDefinitionOptionParameterEnd>")
 }
 
 func (w Wrapper) SoftDollarTiers(reqID int64, tiers []SoftDollarTier) {
-	log.With(zap.Int64("reqID", reqID)).Info("<SoftDollarTiers>",
-		zap.Any("tiers", tiers),
+	log.With("reqID", reqID).Info("<SoftDollarTiers>",
+		"tiers", tiers,
 	)
 }
 
 func (w Wrapper) FamilyCodes(famCodes []FamilyCode) {
 	log.Info("<FamilyCodes>",
-		zap.Any("famCodes", famCodes),
+		"famCodes", famCodes,
 	)
 }
 
 func (w Wrapper) NewsProviders(newsProviders []NewsProvider) {
 	log.Info("<NewsProviders>",
-		zap.Any("newsProviders", newsProviders),
+		"newsProviders", newsProviders,
 	)
 }
 
 func (w Wrapper) TickNews(tickerID int64, timeStamp int64, providerCode string, articleID string, headline string, extraData string) {
-	log.With(zap.Int64("tickerID", tickerID)).Info("<TickNews>",
-		zap.Int64("timeStamp", timeStamp),
-		zap.String("providerCode", providerCode),
-		zap.String("articleID", articleID),
-		zap.String("headline", headline),
-		zap.String("extraData", extraData),
+	log.With("tickerID", tickerID).Info("<TickNews>",
+		"timeStamp", timeStamp,
+		"providerCode", providerCode,
+		"articleID", articleID,
+		"headline", headline,
+		"extraData", extraData,
 	)
 }
 
 func (w Wrapper) NewsArticle(reqID int64, articleType int64, articleText string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<NewsArticle>",
-		zap.Int64("articleType", articleType),
-		zap.String("articleText", articleText),
+	log.With("reqID", reqID).Info("<NewsArticle>",
+		"articleType", articleType,
+		"articleText", articleText,
 	)
 }
 
 func (w Wrapper) HistoricalNews(reqID int64, time string, providerCode string, articleID string, headline string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalNews>",
-		zap.String("time", time),
-		zap.String("providerCode", providerCode),
-		zap.String("articleID", articleID),
-		zap.String("headline", headline),
+	log.With("reqID", reqID).Info("<HistoricalNews>",
+		"time", time,
+		"providerCode", providerCode,
+		"articleID", articleID,
+		"headline", headline,
 	)
 }
 
 func (w Wrapper) HistoricalNewsEnd(reqID int64, hasMore bool) {
-	log.With(zap.Int64("reqID", reqID)).Info("<HistoricalNewsEnd>",
-		zap.Bool("hasMore", hasMore),
+	log.With("reqID", reqID).Info("<HistoricalNewsEnd>",
+		"hasMore", hasMore,
 	)
 }
 
 func (w Wrapper) UpdateNewsBulletin(msgID int64, msgType int64, newsMessage string, originExch string) {
-	log.With(zap.Int64("msgID", msgID)).Info("<UpdateNewsBulletin>",
-		zap.Int64("msgType", msgType),
-		zap.String("newsMessage", newsMessage),
-		zap.String("originExch", originExch),
+	log.With("msgID", msgID).Info("<UpdateNewsBulletin>",
+		"msgType", msgType,
+		"newsMessage", newsMessage,
+		"originExch", originExch,
 	)
 }
 
 func (w Wrapper) ReceiveFA(faData int64, cxml string) {
 	log.Info("<ReceiveFA>",
-		zap.Int64("faData", faData),
-		zap.String("cxml", cxml),
+		"faData", faData,
+		"cxml", cxml,
 	)
 }
 
 func (w Wrapper) CurrentTime(t time.Time) {
 	log.Info("<CurrentTime>",
-		zap.Time("time", t),
+		"time", t,
 	)
 }
 
 func (w Wrapper) Error(reqID int64, errCode int64, errString string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<Error>",
-		zap.Int64("errCode", errCode),
-		zap.String("errString", errString),
+	log.With("reqID", reqID).Info("<Error>",
+		"errCode", errCode,
+		"errString", errString,
 	)
 }
 
 func (w Wrapper) CompletedOrder(contract *Contract, order *Order, orderState *OrderState) {
 	log.Info("<CompletedOrder>",
-		zap.Any("contract", contract),
-		zap.Any("order", order),
-		zap.Any("orderState", orderState),
+		"contract", contract,
+		"order", order,
+		"orderState", orderState,
 	)
 }
 
@@ -675,12 +673,12 @@ func (w Wrapper) CompletedOrdersEnd() {
 }
 
 func (w Wrapper) ReplaceFAEnd(reqID int64, text string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<ReplaceFAEnd>", zap.String("text", text))
+	log.With("reqID", reqID).Info("<ReplaceFAEnd>", "text", text)
 }
 
 func (w Wrapper) WshMetaData(reqID int64, dataJson string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<WshMetaData>", zap.String("dataJson", dataJson))
+	log.With("reqID", reqID).Info("<WshMetaData>", "dataJson", dataJson)
 }
 func (w Wrapper) WshEventData(reqID int64, dataJson string) {
-	log.With(zap.Int64("reqID", reqID)).Info("<WshEventData>", zap.String("dataJson", dataJson))
+	log.With("reqID", reqID).Info("<WshEventData>", "dataJson", dataJson)
 }
