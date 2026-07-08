@@ -51,6 +51,61 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the process. `Wrapper.Error` is still fired for `BAD_LENGTH` so
   callers get the diagnostic. Bundled with the goroutine fix above.
 
+- **client: end-to-end `Disconnect` idempotency + `wg.Add`-before-`go`.**
+  Two related lifecycle races. First: `Disconnect` was only guarded
+  at the channel-close level, not the whole body, so concurrent calls
+  (e.g. panicking-worker-driven Disconnect racing a user-driven one)
+  raced through `reset()`'s ~15 field writes. Wrapped body in a new
+  `disconnectOnce`. Second: each worker did `wg.Add(1)` inside itself,
+  letting a fast `Disconnect` hit `wg.Wait()` with counter 0 before
+  the worker scheduled. Moved the `Add` to the caller side.
+  Regression coverage in `TestConcurrentDisconnect` and
+  `TestFastRunThenDisconnect` — both meaningful only under `-race`.
+
+- **client/connection: atomic-guard `ic.err`, `conn.state`, byte
+  counters.** Three previously-unsynchronized fields. `ic.err` (a
+  two-word interface) was written from four sites across three
+  workers; torn writes were possible on simultaneous socket failures.
+  Add a `setErr` helper guarded by `errOnce` — first-error-wins matches
+  the "causative error" semantic. `IbConnection.state` (read by
+  `IsConnected` from `goRequest`, written by `HandShake` / `Disconnect`
+  from the main goroutine) → `atomic.Int32`; state constants retyped
+  to `int32` iota. `numBytesSent/Recv` and `numMsgSent/Recv`
+  (incremented on every socket op from `goRequest` / `goReceive`) →
+  `atomic.Int64`. Regression coverage in `TestSetErrFirstWins`.
+
+- **client: harden `HandShake`, request enqueue, `LoopUntilDone`,
+  nil-`Disconnect`.** Four API-boundary hazards. `HandShake` timeout /
+  ctx-cancel branches returned without stopping the already-spawned
+  `goReceive` — now `defer` a `Disconnect()` on the non-OK path so
+  the socket closes and the receiver actually exits. Also swapped
+  `time.After` for `time.NewTimer` + `Stop`. `PlaceOrder`-style
+  callers sending on `reqChan` after `Disconnect` blocked forever
+  once the 10-slot buffer filled — introduce an `enqueue()` helper
+  that checks `IsConnected` atomically and `select`s against
+  `terminatedSignal`; 78 direct sends rewritten. `LoopUntilDone`'s
+  ctx-watcher goroutine leaked when `Disconnect` fired directly (not
+  via ctx cancel) — added a `<-ic.done` branch. `Disconnect` before
+  `Connect` nil-derefed on the zero-value `*net.TCPConn` — nil-guard
+  in `IbConnection.disconnect()`. Also fixes a defer-order race the
+  new tests surfaced: workers had `wg.Done()` registered last, so it
+  fired first at exit and `Disconnect`'s deferred `reset()` swapped
+  channels while the recover was still reading `terminatedSignal`.
+  Reordered so `wg.Done` fires last. Regression coverage in
+  `TestDisconnectBeforeConnect`, `TestRequestAfterDisconnectDoesNotHang`,
+  `TestLoopUntilDoneWatcherReleasedOnDirectDisconnect`,
+  `TestHandshakeCtxCancelTearsDownReceiver`.
+
+- **client: reject setters after `Connect` (Python-model contract).**
+  `SetWrapper`, `SetContext`, `SetConnectionOptions` all mutated
+  fields readable from HandShake / worker goroutines. Match Python's
+  construction-time contract — the wrapper is passed at
+  `NewIbClient(wrapper)` and setters must be called before `Connect`.
+  Post-Connect calls return `ALREADY_CONNECTED` instead of racing
+  the readers. Signature change: all three setters now return
+  `error`. Regression coverage in `TestSettersRejectedAfterConnect`
+  and `TestSetWrapperRejectedAfterConnect`.
+
 ### Added
 
 - **`CancelCalculateImpliedVolatility(reqID)`.** Companion cancel for
@@ -62,6 +117,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Module path**: `github.com/hadrianl/ibapi` → `github.com/fiber/ibapi`.
 - **`Order.Solictied` → `Solicited`.** Typo in the upstream field name
   (both the struct field and the two decoder sites that populated it).
+
+### Removed
+
+- **Dead `IbClient.timeChan chan time.Time` field.** Declared,
+  initialized nowhere, never read.
 
 ## Deliberately not fixed (yet)
 

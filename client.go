@@ -39,7 +39,6 @@ type IbClient struct {
 	reqChan          chan []byte
 	errChan          chan error
 	msgChan          chan []byte
-	timeChan         chan time.Time
 	terminatedSignal chan int  // signal to terminate the three goroutine
 	done             chan bool // closed by Disconnect to broadcast shutdown; safe to select on with no receiver present
 	doneOnce         sync.Once // guards close(done) so Disconnect is idempotent
@@ -105,14 +104,28 @@ func (ic *IbClient) SetWrapper(wrapper IbWrapper) error {
 	return nil
 }
 
-// SetContext setup the Connection Context
-func (ic *IbClient) SetContext(ctx context.Context) {
+// SetContext installs the parent context for the connection lifetime.
+// Must be called before Connect — HandShake reads ic.ctx from its
+// select loop and LoopUntilDone spawns a watcher on it, so an
+// unsynchronized swap after either has started is a data race.
+// Follows the same construction-time contract as SetWrapper.
+func (ic *IbClient) SetContext(ctx context.Context) error {
+	if ic.conn != nil && ic.conn.state.Load() != DISCONNECTED {
+		return ALREADY_CONNECTED
+	}
 	ic.ctx = ctx
+	return nil
 }
 
-// SetConnectionOptions setup the Connection Options
-func (ic *IbClient) SetConnectionOptions(opts string) {
+// SetConnectionOptions installs the connection-options string sent
+// with the HandShake header. Must be called before Connect for the
+// same reason as SetContext — HandShake is the only reader.
+func (ic *IbClient) SetConnectionOptions(opts string) error {
+	if ic.conn != nil && ic.conn.state.Load() != DISCONNECTED {
+		return ALREADY_CONNECTED
+	}
 	ic.connectOptions = opts
+	return nil
 }
 
 // Connect try to connect the TWS or IB GateWay, after this, handshake should be call to get the connection done

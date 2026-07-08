@@ -24,12 +24,11 @@ func TestClient(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	ic := NewIbClient(new(Wrapper))
+	_ = ic.SetConnectionOptions("+PACEAPI")
 
 	if err := ic.Connect("localhost", 7497, 100); err != nil {
 		log.Panic("failed to connect", zap.Error(err))
 	}
-
-	ic.SetConnectionOptions("+PACEAPI")
 
 	if err := ic.HandShake(); err != nil {
 		log.Panic("failed to hand shake", zap.Error(err))
@@ -162,13 +161,12 @@ func TestClientReconnect(t *testing.T) {
 	ic := NewIbClient(new(Wrapper))
 
 	for {
+		_ = ic.SetConnectionOptions("+PACEAPI")
 		if err := ic.Connect("localhost", 4002, 0); err != nil {
 			log.Error("failed to connect, reconnect after 5 sec", zap.Error(err))
 			time.Sleep(5 * time.Second)
 			continue
 		}
-
-		ic.SetConnectionOptions("+PACEAPI")
 
 		if err := ic.HandShake(); err != nil {
 			log.Error("failed to hand shake, reconnect after 5 sec", zap.Error(err))
@@ -193,13 +191,13 @@ func TestClientWithContext(t *testing.T) {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	ibwrapper := new(Wrapper)
 	ic := NewIbClient(ibwrapper)
-	ic.SetContext(ctx)
+	_ = ic.SetContext(ctx)
+	_ = ic.SetConnectionOptions("+PACEAPI")
 	err = ic.Connect("localhost", 7497, 0)
 	if err != nil {
 		log.Panic("failed to connect", zap.Error(err))
 	}
 
-	ic.SetConnectionOptions("+PACEAPI")
 	err = ic.HandShake()
 	if err != nil {
 		log.Panic("failed to hand shake", zap.Error(err))
@@ -295,13 +293,13 @@ func TestPlaceOrder(t *testing.T) {
 
 	ibwrapper := new(Wrapper)
 	ic := NewIbClient(ibwrapper)
+	_ = ic.SetConnectionOptions("+PACEAPI")
 
 	err = ic.Connect("localhost", 7497, 0)
 	if err != nil {
 		log.Panic("failed to connect", zap.Error(err))
 	}
 
-	ic.SetConnectionOptions("+PACEAPI")
 	err = ic.HandShake()
 	if err != nil {
 		log.Panic("failed to hand shake", zap.Error(err))

@@ -107,7 +107,7 @@ func TestLoopUntilDoneWatcherReleasedOnDirectDisconnect(t *testing.T) {
 	host, port := splitHostPort(t, addr)
 
 	ic := NewIbClient(new(Wrapper))
-	ic.SetContext(context.Background()) // never cancels
+	_ = ic.SetContext(context.Background()) // never cancels
 	if err := ic.Connect(host, port, 11); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -138,6 +138,44 @@ func TestLoopUntilDoneWatcherReleasedOnDirectDisconnect(t *testing.T) {
 	// checks that the watcher's ctx.Done() branch isn't the only exit.
 	if err := ic.Disconnect(); err != nil {
 		t.Fatalf("second Disconnect: %v", err)
+	}
+}
+
+// TestSettersRejectedAfterConnect verifies the Python-model contract
+// applies to all three construction-time setters. Racy callers who
+// swap ctx / connect options / wrapper after Connect get an error
+// instead of a silent field write that races HandShake or the
+// LoopUntilDone watcher.
+func TestSettersRejectedAfterConnect(t *testing.T) {
+	addr, stop := listenLoopback(t)
+	defer stop()
+	host, port := splitHostPort(t, addr)
+
+	ic := NewIbClient(new(Wrapper))
+	// pre-Connect: all three succeed
+	if err := ic.SetContext(context.Background()); err != nil {
+		t.Fatalf("pre-Connect SetContext: %v", err)
+	}
+	if err := ic.SetConnectionOptions("+PACEAPI"); err != nil {
+		t.Fatalf("pre-Connect SetConnectionOptions: %v", err)
+	}
+	if err := ic.SetWrapper(new(Wrapper)); err != nil {
+		t.Fatalf("pre-Connect SetWrapper: %v", err)
+	}
+
+	if err := ic.Connect(host, port, 30); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer ic.Disconnect()
+
+	if err := ic.SetContext(context.Background()); err != ALREADY_CONNECTED {
+		t.Fatalf("post-Connect SetContext got %v; want ALREADY_CONNECTED", err)
+	}
+	if err := ic.SetConnectionOptions("+FOO"); err != ALREADY_CONNECTED {
+		t.Fatalf("post-Connect SetConnectionOptions got %v; want ALREADY_CONNECTED", err)
+	}
+	if err := ic.SetWrapper(new(Wrapper)); err != ALREADY_CONNECTED {
+		t.Fatalf("post-Connect SetWrapper got %v; want ALREADY_CONNECTED", err)
 	}
 }
 
@@ -187,7 +225,7 @@ func TestHandshakeCtxCancelTearsDownReceiver(t *testing.T) {
 	// the counter above zero after HandShake bail-out.
 	ic := NewIbClient(new(Wrapper))
 	ctx, cancel := context.WithCancel(context.Background())
-	ic.SetContext(ctx)
+	_ = ic.SetContext(ctx)
 
 	if err := ic.Connect(host, port, 12); err != nil {
 		t.Fatalf("Connect: %v", err)
