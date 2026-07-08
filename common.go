@@ -134,13 +134,13 @@ type RealTimeBar struct {
 	High    float64
 	Low     float64
 	Close   float64
-	Volume  int64
+	Volume  float64
 	Wap     float64
 	Count   int64
 }
 
 func (rb RealTimeBar) String() string {
-	return fmt.Sprintf("RealTimeBar<Time: %d, Open: %f, High: %f, Low: %f, Close: %f, Volume: %d, Wap: %f, Count: %d>",
+	return fmt.Sprintf("RealTimeBar<Time: %d, Open: %f, High: %f, Low: %f, Close: %f, Volume: %f, Wap: %f, Count: %d>",
 		rb.Time,
 		rb.Open,
 		rb.High,
@@ -236,11 +236,11 @@ func (np NewsProvider) String() string {
 // HistogramData ...
 type HistogramData struct {
 	Price float64
-	Count int64
+	Count float64
 }
 
 func (hgd HistogramData) String() string {
-	return fmt.Sprintf("HistogramData<Price: %f, Count: %d>",
+	return fmt.Sprintf("HistogramData<Price: %f, Count: %f>",
 		hgd.Price,
 		hgd.Count)
 }
@@ -262,11 +262,11 @@ func (p PriceIncrement) String() string {
 type HistoricalTick struct {
 	Time  int64
 	Price float64
-	Size  int64
+	Size  float64
 }
 
 func (h HistoricalTick) String() string {
-	return fmt.Sprintf("Tick<Time: %d, Price: %f, Size: %d>",
+	return fmt.Sprintf("Tick<Time: %d, Price: %f, Size: %f>",
 		h.Time,
 		h.Price,
 		h.Size)
@@ -279,12 +279,12 @@ type HistoricalTickBidAsk struct {
 	TickAttirbBidAsk TickAttribBidAsk
 	PriceBid         float64
 	PriceAsk         float64
-	SizeBid          int64
-	SizeAsk          int64
+	SizeBid          float64
+	SizeAsk          float64
 }
 
 func (h HistoricalTickBidAsk) String() string {
-	return fmt.Sprintf("TickBidAsk<Time: %d, TickAttriBidAsk: %s, PriceBid: %f, PriceAsk: %f, SizeBid: %d, SizeAsk: %d>",
+	return fmt.Sprintf("TickBidAsk<Time: %d, TickAttriBidAsk: %s, PriceBid: %f, PriceAsk: %f, SizeBid: %f, SizeAsk: %f>",
 		h.Time,
 		h.TickAttirbBidAsk,
 		h.PriceBid,
@@ -311,13 +311,13 @@ type HistoricalTickLast struct {
 	Time              int64
 	TickAttribLast    TickAttribLast
 	Price             float64
-	Size              int64
+	Size              float64
 	Exchange          string
 	SpecialConditions string
 }
 
 func (h HistoricalTickLast) String() string {
-	return fmt.Sprintf("TickLast<Time: %d, TickAttribLast: %s, Price: %f, Size: %d, Exchange: %s, SpecialConditions: %s>",
+	return fmt.Sprintf("TickLast<Time: %d, TickAttribLast: %s, Price: %f, Size: %f, Exchange: %s, SpecialConditions: %s>",
 		h.Time,
 		h.TickAttribLast,
 		h.Price,

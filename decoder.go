@@ -168,7 +168,7 @@ func (d *ibDecoder) wrapTickSize(msgBuf *MsgBuffer) {
 	_ = msgBuf.readString()
 	reqID := msgBuf.readInt()
 	tickType := msgBuf.readInt()
-	size := msgBuf.readInt()
+	size := msgBuf.readFloat()
 	d.wrapper.TickSize(reqID, tickType, size)
 }
 
@@ -235,7 +235,7 @@ func (d *ibDecoder) wrapUpdateMktDepth(msgBuf *MsgBuffer) {
 	operation := msgBuf.readInt()
 	side := msgBuf.readInt()
 	price := msgBuf.readFloat()
-	size := msgBuf.readInt()
+	size := msgBuf.readFloat()
 
 	d.wrapper.UpdateMktDepth(reqID, position, operation, side, price, size)
 
@@ -249,7 +249,7 @@ func (d *ibDecoder) wrapUpdateMktDepthL2(msgBuf *MsgBuffer) {
 	operation := msgBuf.readInt()
 	side := msgBuf.readInt()
 	price := msgBuf.readFloat()
-	size := msgBuf.readInt()
+	size := msgBuf.readFloat()
 	isSmartDepth := msgBuf.readBool()
 
 	d.wrapper.UpdateMktDepthL2(reqID, position, marketMaker, operation, side, price, size, isSmartDepth)
@@ -478,7 +478,7 @@ func (d *ibDecoder) processTickPriceMsg(msgBuf *MsgBuffer) {
 	reqID := msgBuf.readInt()
 	tickType := msgBuf.readInt()
 	price := msgBuf.readFloat()
-	size := msgBuf.readInt()
+	size := msgBuf.readFloat()
 	attrMask := msgBuf.readInt()
 
 	attrib := TickAttrib{}
@@ -1294,7 +1294,7 @@ func (d *ibDecoder) processRealTimeBarMsg(msgBuf *MsgBuffer) {
 	rtb.High = msgBuf.readFloat()
 	rtb.Low = msgBuf.readFloat()
 	rtb.Close = msgBuf.readFloat()
-	rtb.Volume = msgBuf.readInt()
+	rtb.Volume = msgBuf.readFloat()
 	rtb.Wap = msgBuf.readFloat()
 	rtb.Count = msgBuf.readInt()
 
@@ -1671,7 +1671,7 @@ func (d *ibDecoder) processHistogramData(msgBuf *MsgBuffer) {
 	for ; n > 0; n-- {
 		p := HistogramData{}
 		p.Price = msgBuf.readFloat()
-		p.Count = msgBuf.readInt()
+		p.Count = msgBuf.readFloat()
 		histogram = append(histogram, p)
 	}
 
@@ -1728,7 +1728,7 @@ func (d *ibDecoder) processPnLMsg(msgBuf *MsgBuffer) {
 }
 func (d *ibDecoder) processPnLSingleMsg(msgBuf *MsgBuffer) {
 	reqID := msgBuf.readInt()
-	position := msgBuf.readInt()
+	position := msgBuf.readFloat()
 	dailyPnL := msgBuf.readFloat()
 	var unrealizedPnL float64
 	var realizedPnL float64
@@ -1755,7 +1755,7 @@ func (d *ibDecoder) processHistoricalTicks(msgBuf *MsgBuffer) {
 		historicalTick.Time = msgBuf.readInt()
 		_ = msgBuf.readString()
 		historicalTick.Price = msgBuf.readFloat()
-		historicalTick.Size = msgBuf.readInt()
+		historicalTick.Size = msgBuf.readFloat()
 		ticks = append(ticks, historicalTick)
 	}
 
@@ -1780,8 +1780,8 @@ func (d *ibDecoder) processHistoricalTicksBidAsk(msgBuf *MsgBuffer) {
 		historicalTickBidAsk.TickAttirbBidAsk = tickAttribBidAsk
 		historicalTickBidAsk.PriceBid = msgBuf.readFloat()
 		historicalTickBidAsk.PriceAsk = msgBuf.readFloat()
-		historicalTickBidAsk.SizeBid = msgBuf.readInt()
-		historicalTickBidAsk.SizeAsk = msgBuf.readInt()
+		historicalTickBidAsk.SizeBid = msgBuf.readFloat()
+		historicalTickBidAsk.SizeAsk = msgBuf.readFloat()
 		ticks = append(ticks, historicalTickBidAsk)
 	}
 
@@ -1805,7 +1805,7 @@ func (d *ibDecoder) processHistoricalTicksLast(msgBuf *MsgBuffer) {
 
 		historicalTickLast.TickAttribLast = tickAttribLast
 		historicalTickLast.Price = msgBuf.readFloat()
-		historicalTickLast.Size = msgBuf.readInt()
+		historicalTickLast.Size = msgBuf.readFloat()
 		historicalTickLast.Exchange = msgBuf.readString()
 		historicalTickLast.SpecialConditions = msgBuf.readString()
 		ticks = append(ticks, historicalTickLast)
@@ -1824,7 +1824,7 @@ func (d *ibDecoder) processTickByTickMsg(msgBuf *MsgBuffer) {
 	case 0:
 	case 1, 2:
 		price := msgBuf.readFloat()
-		size := msgBuf.readInt()
+		size := msgBuf.readFloat()
 
 		mask := msgBuf.readInt()
 		tickAttribLast := TickAttribLast{}
@@ -1838,8 +1838,8 @@ func (d *ibDecoder) processTickByTickMsg(msgBuf *MsgBuffer) {
 	case 3:
 		bidPrice := msgBuf.readFloat()
 		askPrice := msgBuf.readFloat()
-		bidSize := msgBuf.readInt()
-		askSize := msgBuf.readInt()
+		bidSize := msgBuf.readFloat()
+		askSize := msgBuf.readFloat()
 
 		mask := msgBuf.readInt()
 		tickAttribBidAsk := TickAttribBidAsk{}
@@ -1873,7 +1873,7 @@ func (d *ibDecoder) processMarketDepthL2Msg(msgBuf *MsgBuffer) {
 	operation := msgBuf.readInt()
 	side := msgBuf.readInt()
 	price := msgBuf.readFloat()
-	size := msgBuf.readInt()
+	size := msgBuf.readFloat()
 
 	isSmartDepth := false
 	if d.version >= mMIN_SERVER_VER_SMART_DEPTH {

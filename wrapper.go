@@ -10,7 +10,7 @@ import (
 // IbWrapper contain the funcs to handle the msg from TWS or Gateway
 type IbWrapper interface {
 	TickPrice(reqID int64, tickType int64, price float64, attrib TickAttrib)
-	TickSize(reqID int64, tickType int64, size int64)
+	TickSize(reqID int64, tickType int64, size float64)
 	OrderStatus(orderID int64, status string, filled float64, remaining float64, avgFillPrice float64, permID int64, parentID int64, lastFillPrice float64, clientID int64, whyHeld string, mktCapPrice float64)
 	Error(reqID int64, errCode int64, errString string)
 	OpenOrder(orderID int64, contract *Contract, order *Order, orderState *OrderState)
@@ -20,8 +20,8 @@ type IbWrapper interface {
 	NextValidID(reqID int64)
 	ContractDetails(reqID int64, conDetails *ContractDetails)
 	ExecDetails(reqID int64, contract *Contract, execution *Execution)
-	UpdateMktDepth(reqID int64, position int64, operation int64, side int64, price float64, size int64)
-	UpdateMktDepthL2(reqID int64, position int64, marketMaker string, operation int64, side int64, price float64, size int64, isSmartDepth bool)
+	UpdateMktDepth(reqID int64, position int64, operation int64, side int64, price float64, size float64)
+	UpdateMktDepthL2(reqID int64, position int64, marketMaker string, operation int64, side int64, price float64, size float64, isSmartDepth bool)
 	UpdateNewsBulletin(msgID int64, msgType int64, newsMessage string, originExchange string)
 	ManagedAccounts(accountsList []string)
 	ReceiveFA(faData int64, cxml string)
@@ -37,7 +37,7 @@ type IbWrapper interface {
 	TickString(reqID int64, tickType int64, value string)
 	TickEFP(reqID int64, tickType int64, basisPoints float64, formattedBasisPoints string, totalDividends float64, holdDays int64, futureLastTradeDate string, dividendImpact float64, dividendsToLastTradeDate float64)
 	CurrentTime(t time.Time)
-	RealtimeBar(reqID int64, time int64, open float64, high float64, low float64, close float64, volume int64, wap float64, count int64)
+	RealtimeBar(reqID int64, time int64, open float64, high float64, low float64, close float64, volume float64, wap float64, count int64)
 	FundamentalData(reqID int64, data string)
 	ContractDetailsEnd(reqID int64)
 	OpenOrderEnd()
@@ -79,12 +79,12 @@ type IbWrapper interface {
 	RerouteMktDepthReq(reqID int64, contractID int64, exchange string)
 	MarketRule(marketRuleID int64, priceIncrements []PriceIncrement)
 	Pnl(reqID int64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64)
-	PnlSingle(reqID int64, position int64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64, value float64)
+	PnlSingle(reqID int64, position float64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64, value float64)
 	HistoricalTicks(reqID int64, ticks []HistoricalTick, done bool)
 	HistoricalTicksBidAsk(reqID int64, ticks []HistoricalTickBidAsk, done bool)
 	HistoricalTicksLast(reqID int64, ticks []HistoricalTickLast, done bool)
-	TickByTickAllLast(reqID int64, tickType int64, time int64, price float64, size int64, tickAttribLast TickAttribLast, exchange string, specialConditions string)
-	TickByTickBidAsk(reqID int64, time int64, bidPrice float64, askPrice float64, bidSize int64, askSize int64, tickAttribBidAsk TickAttribBidAsk)
+	TickByTickAllLast(reqID int64, tickType int64, time int64, price float64, size float64, tickAttribLast TickAttribLast, exchange string, specialConditions string)
+	TickByTickBidAsk(reqID int64, time int64, bidPrice float64, askPrice float64, bidSize float64, askSize float64, tickAttribBidAsk TickAttribBidAsk)
 	TickByTickMidPoint(reqID int64, time int64, midPoint float64)
 	OrderBound(reqID int64, apiClientID int64, apiOrderID int64)
 	CompletedOrder(contract *Contract, order *Order, orderState *OrderState)
@@ -240,8 +240,9 @@ func (w Wrapper) Pnl(reqID int64, dailyPnL float64, unrealizedPnL float64, reali
 	)
 }
 
-func (w Wrapper) PnlSingle(reqID int64, position int64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64, value float64) {
+func (w Wrapper) PnlSingle(reqID int64, position float64, dailyPnL float64, unrealizedPnL float64, realizedPnL float64, value float64) {
 	log.With(zap.Int64("reqID", reqID)).Info("<PNLSingle>",
+		zap.Float64("position", position),
 		zap.Float64("dailyPnL", dailyPnL),
 		zap.Float64("unrealizedPnL", unrealizedPnL),
 		zap.Float64("realizedPnL", realizedPnL),
@@ -336,14 +337,14 @@ func (w Wrapper) MarketRule(marketRuleID int64, priceIncrements []PriceIncrement
 	)
 }
 
-func (w Wrapper) RealtimeBar(reqID int64, time int64, open float64, high float64, low float64, close float64, volume int64, wap float64, count int64) {
+func (w Wrapper) RealtimeBar(reqID int64, time int64, open float64, high float64, low float64, close float64, volume float64, wap float64, count int64) {
 	log.With(zap.Int64("reqID", reqID)).Info("<RealtimeBar>",
 		zap.Int64("time", time),
 		zap.Float64("open", open),
 		zap.Float64("high", high),
 		zap.Float64("low", low),
 		zap.Float64("close", close),
-		zap.Int64("volume", volume),
+		zap.Float64("volume", volume),
 		zap.Float64("wap", wap),
 		zap.Int64("count", count),
 	)
@@ -395,10 +396,10 @@ func (w Wrapper) HistoricalTicksLast(reqID int64, ticks []HistoricalTickLast, do
 	)
 }
 
-func (w Wrapper) TickSize(reqID int64, tickType int64, size int64) {
+func (w Wrapper) TickSize(reqID int64, tickType int64, size float64) {
 	log.With(zap.Int64("reqID", reqID)).Info("<TickSize>",
 		zap.Int64("tickType", tickType),
-		zap.Int64("size", size),
+		zap.Float64("size", size),
 	)
 }
 
@@ -412,22 +413,22 @@ func (w Wrapper) MarketDataType(reqID int64, marketDataType int64) {
 	)
 }
 
-func (w Wrapper) TickByTickAllLast(reqID int64, tickType int64, time int64, price float64, size int64, tickAttribLast TickAttribLast, exchange string, specialConditions string) {
+func (w Wrapper) TickByTickAllLast(reqID int64, tickType int64, time int64, price float64, size float64, tickAttribLast TickAttribLast, exchange string, specialConditions string) {
 	log.With(zap.Int64("reqID", reqID)).Info("<TickByTickAllLast>",
 		zap.Int64("tickType", tickType),
 		zap.Int64("time", time),
 		zap.Float64("price", price),
-		zap.Int64("size", size),
+		zap.Float64("size", size),
 	)
 }
 
-func (w Wrapper) TickByTickBidAsk(reqID int64, time int64, bidPrice float64, askPrice float64, bidSize int64, askSize int64, tickAttribBidAsk TickAttribBidAsk) {
+func (w Wrapper) TickByTickBidAsk(reqID int64, time int64, bidPrice float64, askPrice float64, bidSize float64, askSize float64, tickAttribBidAsk TickAttribBidAsk) {
 	log.With(zap.Int64("reqID", reqID)).Info("<TickByTickBidAsk>",
 		zap.Int64("time", time),
 		zap.Float64("bidPrice", bidPrice),
 		zap.Float64("askPrice", askPrice),
-		zap.Int64("bidPrice", bidSize),
-		zap.Int64("askPrice", askSize),
+		zap.Float64("bidSize", bidSize),
+		zap.Float64("askSize", askSize),
 	)
 }
 
@@ -483,24 +484,24 @@ operation - how to refresh the row:
 side -  0 for ask, 1 for bid
 price - the order's price
 size -  the order's size*/
-func (w Wrapper) UpdateMktDepth(reqID int64, position int64, operation int64, side int64, price float64, size int64) {
+func (w Wrapper) UpdateMktDepth(reqID int64, position int64, operation int64, side int64, price float64, size float64) {
 	log.With(zap.Int64("reqID", reqID)).Info("<UpdateMktDepth>",
 		zap.Int64("position", position),
 		zap.Int64("operation", operation),
 		zap.Int64("side", side),
 		zap.Float64("price", price),
-		zap.Int64("size", size),
+		zap.Float64("size", size),
 	)
 }
 
-func (w Wrapper) UpdateMktDepthL2(reqID int64, position int64, marketMaker string, operation int64, side int64, price float64, size int64, isSmartDepth bool) {
+func (w Wrapper) UpdateMktDepthL2(reqID int64, position int64, marketMaker string, operation int64, side int64, price float64, size float64, isSmartDepth bool) {
 	log.With(zap.Int64("reqID", reqID)).Info("<UpdateMktDepthL2>",
 		zap.Int64("position", position),
 		zap.String("marketMaker", marketMaker),
 		zap.Int64("operation", operation),
 		zap.Int64("side", side),
 		zap.Float64("price", price),
-		zap.Int64("size", size),
+		zap.Float64("size", size),
 		zap.Bool("isSmartDepth", isSmartDepth),
 	)
 }
