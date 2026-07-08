@@ -44,6 +44,7 @@ type IbClient struct {
 	done             chan bool // closed by Disconnect to broadcast shutdown; safe to select on with no receiver present
 	doneOnce         sync.Once // guards close(done) so Disconnect is idempotent
 	shutdownOnce     sync.Once // guards close(terminatedSignal) — either Disconnect or a panicking goroutine may fire it
+	disconnectOnce   sync.Once // guards the entire Disconnect body so concurrent callers don't race on reset()
 	clientVersion    Version
 	serverVersion    Version
 	connTime         string
@@ -116,6 +117,7 @@ func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 	ic.done = make(chan bool)
 	ic.doneOnce = sync.Once{}
 	ic.shutdownOnce = sync.Once{}
+	ic.disconnectOnce = sync.Once{}
 	return nil
 }
 
@@ -147,27 +149,33 @@ func panicError(role string, v interface{}) error {
 6.reset the IbClient
 */
 func (ic *IbClient) Disconnect() error {
-	log.Debug("close terminatedSignal chan")
-	ic.signalShutdown()
+	// Guard the entire teardown — not just individual channel closes.
+	// A panicking worker calls `go ic.Disconnect()` from its recover
+	// path; if the caller also invokes Disconnect, both would race on
+	// reset() and stomp each other's field writes. sync.Once makes the
+	// whole sequence run exactly once per Connect epoch.
+	ic.disconnectOnce.Do(func() {
+		log.Debug("close terminatedSignal chan")
+		ic.signalShutdown()
 
-	if err := ic.conn.disconnect(); err != nil {
-		return err
-	}
+		if err := ic.conn.disconnect(); err != nil {
+			ic.err = err
+			// still fall through — the goroutines need to unwind and
+			// callers parked on ic.done need to be released.
+		}
 
-	ic.wg.Wait()
+		ic.wg.Wait()
 
-	// should not reconnect IbClient in ConnectionClosed
-	// because reset would be called right after ConnectionClosed
-	//
-	// Close (rather than send) the done channel so LoopUntilDone
-	// unblocks whether or not a receiver was already parked on it.
-	// sync.Once guards against a double-close when Disconnect races
-	// against context cancellation or is called twice.
-	defer ic.doneOnce.Do(func() { close(ic.done) })
-	defer ic.reset()
-	defer ic.wrapper.ConnectionClosed()
-	defer log.Info("Disconnected!")
-
+		// should not reconnect IbClient in ConnectionClosed
+		// because reset would be called right after ConnectionClosed
+		//
+		// Close (rather than send) the done channel so LoopUntilDone
+		// unblocks whether or not a receiver was already parked on it.
+		defer ic.doneOnce.Do(func() { close(ic.done) })
+		defer ic.reset()
+		defer ic.wrapper.ConnectionClosed()
+		defer log.Info("Disconnected!")
+	})
 	return ic.err
 }
 
@@ -252,6 +260,10 @@ func (ic *IbClient) HandShake() error {
 		return err
 	}
 
+	// Add() before go — the reverse racing pattern (Add inside the
+	// worker) can let a fast Disconnect run wg.Wait() before the
+	// worker schedules, dropping through with counter 0.
+	ic.wg.Add(1)
 	go ic.goReceive() // receive the data, make sure client receives the nextValidID and manageAccount which help comfirm the client.
 	comfirmMsgIDs := []IN{mNEXT_VALID_ID, mMANAGED_ACCTS}
 
@@ -2960,8 +2972,6 @@ func (ic *IbClient) goRequest() {
 	defer log.Debug("requester end")
 	defer ic.wg.Done()
 
-	ic.wg.Add(1)
-
 requestLoop:
 	for {
 		select {
@@ -3007,8 +3017,6 @@ func (ic *IbClient) goReceive() {
 	defer log.Debug("receiver end")
 	defer ic.wg.Done()
 
-	ic.wg.Add(1)
-
 	for ic.scanner.Scan() {
 		// msgChan has buffer size, so copy here to avoid underlying arrar being overwritten
 		// or we can just set the msgChan without size so that it's no need to copy, but might block the receiver because of slow consumer
@@ -3048,8 +3056,6 @@ func (ic *IbClient) goDecode() {
 	defer log.Debug("decoder end")
 	defer ic.wg.Done()
 
-	ic.wg.Add(1)
-
 decodeLoop:
 	for {
 		select {
@@ -3078,6 +3084,7 @@ func (ic *IbClient) Run() error {
 	}
 	log.Info("run client")
 
+	ic.wg.Add(2)
 	go ic.goRequest()
 	go ic.goDecode()
 

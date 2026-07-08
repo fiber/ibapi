@@ -2,9 +2,21 @@ package ibapi
 
 import (
 	"net"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// countingWrapper records ConnectionClosed calls so tests can catch
+// double-fires on the Disconnect idempotency path.
+type countingWrapper struct {
+	Wrapper
+	closed atomic.Int32
+}
+
+func (w *countingWrapper) ConnectionClosed() { w.closed.Add(1) }
+func (w *countingWrapper) closedCount() int  { return int(w.closed.Load()) }
 
 // listenLoopback opens a listener that accepts and drops each connection.
 // Returns the address the client should Dial and a stop function.
@@ -98,6 +110,70 @@ func TestDisconnectNoReceiver(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Disconnect did not return within 2s (hang regression)")
+	}
+}
+
+// TestConcurrentDisconnect verifies two Disconnect calls firing in
+// parallel don't race on reset() or double-fire ConnectionClosed. This
+// is the exact scenario when goReceive's post-loop branch spawns
+// `go ic.Disconnect()` while the caller also explicitly disconnects.
+// Only meaningful under -race.
+func TestConcurrentDisconnect(t *testing.T) {
+	addr, stop := listenLoopback(t)
+	defer stop()
+	host, port := splitHostPort(t, addr)
+
+	// countingWrapper flags a second ConnectionClosed as a regression.
+	cw := &countingWrapper{}
+	ic := NewIbClient(cw)
+	if err := ic.Connect(host, port, 3); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	const N = 8
+	var wg sync.WaitGroup
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() { defer wg.Done(); ic.Disconnect() }()
+	}
+	waitCh := make(chan struct{})
+	go func() { wg.Wait(); close(waitCh) }()
+	select {
+	case <-waitCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("concurrent Disconnect did not settle within 3s")
+	}
+	if got := cw.closedCount(); got != 1 {
+		t.Fatalf("ConnectionClosed fired %d times; want 1", got)
+	}
+}
+
+// TestFastRunThenDisconnect stresses the wg.Add-before-go fix. Under
+// the old pattern where each worker called wg.Add(1) inside itself,
+// a fast Disconnect after Run could hit wg.Wait() with counter 0
+// (workers not yet scheduled), let Wait return, and race the workers
+// against reset(). Under -race the schedule-then-Wait race would
+// eventually catch a field write. Loop enough times to make the
+// scheduler-dependent race likely to hit.
+func TestFastRunThenDisconnect(t *testing.T) {
+	addr, stop := listenLoopback(t)
+	defer stop()
+	host, port := splitHostPort(t, addr)
+
+	for i := 0; i < 50; i++ {
+		ic := NewIbClient(new(Wrapper))
+		if err := ic.Connect(host, port, int64(100+i)); err != nil {
+			t.Fatalf("iter %d Connect: %v", i, err)
+		}
+		// Fake the "connected" state Run requires without a real
+		// HandShake; Run only checks IsConnected() then spawns.
+		ic.setConnState(CONNECTED)
+		if err := ic.Run(); err != nil {
+			t.Fatalf("iter %d Run: %v", i, err)
+		}
+		if err := ic.Disconnect(); err != nil {
+			t.Fatalf("iter %d Disconnect: %v", i, err)
+		}
 	}
 }
 
