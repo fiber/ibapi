@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -44,6 +43,7 @@ type IbClient struct {
 	terminatedSignal chan int  // signal to terminate the three goroutine
 	done             chan bool // closed by Disconnect to broadcast shutdown; safe to select on with no receiver present
 	doneOnce         sync.Once // guards close(done) so Disconnect is idempotent
+	shutdownOnce     sync.Once // guards close(terminatedSignal) — either Disconnect or a panicking goroutine may fire it
 	clientVersion    Version
 	serverVersion    Version
 	connTime         string
@@ -115,7 +115,26 @@ func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 	// set done chan after connection is made
 	ic.done = make(chan bool)
 	ic.doneOnce = sync.Once{}
+	ic.shutdownOnce = sync.Once{}
 	return nil
+}
+
+// signalShutdown closes terminatedSignal exactly once. Both Disconnect
+// and a panic-recovering worker goroutine may call it; the sync.Once
+// makes both paths safe.
+func (ic *IbClient) signalShutdown() {
+	ic.shutdownOnce.Do(func() { close(ic.terminatedSignal) })
+}
+
+// panicError wraps a recovered panic value into an error. The old code
+// assumed the panic value was always a string; a callback that panics
+// with an error or any other value would then crash the recovery block
+// itself.
+func panicError(role string, v interface{}) error {
+	if err, ok := v.(error); ok {
+		return fmt.Errorf("%s panicked: %w", role, err)
+	}
+	return fmt.Errorf("%s panicked: %v", role, v)
 }
 
 // Disconnect disconnect the client
@@ -129,7 +148,7 @@ func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 */
 func (ic *IbClient) Disconnect() error {
 	log.Debug("close terminatedSignal chan")
-	close(ic.terminatedSignal) // close make the term signal chan unblocked
+	ic.signalShutdown()
 
 	if err := ic.conn.disconnect(); err != nil {
 		return err
@@ -2916,13 +2935,10 @@ func (ic *IbClient) CancelWshEventData(reqID int64) {
 func (ic *IbClient) goRequest() {
 	log.Debug("requester start")
 	defer func() {
-		if errMsg := recover(); errMsg != nil {
-			err := errors.New(errMsg.(string))
-			log.Error("requester got unexpected error", zap.Error(err))
-			ic.err = err
-			// ic.Disconnect()
-			log.Debug("try to restart requester")
-			go ic.goRequest()
+		if p := recover(); p != nil {
+			log.Error("requester panicked; tearing down connection", zap.Any("panic", p))
+			ic.err = panicError("requester", p)
+			ic.signalShutdown()
 		}
 	}()
 	defer log.Debug("requester end")
@@ -2958,19 +2974,18 @@ requestLoop:
 func (ic *IbClient) goReceive() {
 	log.Debug("receiver start")
 	defer func() {
-		if errMsg := recover(); errMsg != nil {
-			err := errors.New(errMsg.(string))
-			log.Error("receiver got unexpected error", zap.Error(err))
-			ic.err = err
-			// ic.Disconnect()
-			log.Debug("try to restart receiver")
-			go ic.goReceive()
-		} else {
-			select {
-			case <-ic.terminatedSignal:
-			default:
-				ic.Disconnect()
-			}
+		if p := recover(); p != nil {
+			log.Error("receiver panicked; tearing down connection", zap.Any("panic", p))
+			ic.err = panicError("receiver", p)
+			ic.signalShutdown()
+			return
+		}
+		select {
+		case <-ic.terminatedSignal:
+		default:
+			// scanner returned without an explicit shutdown — kick one
+			// off so the requester and decoder unblock too.
+			go ic.Disconnect()
 		}
 	}()
 	defer log.Debug("receiver end")
@@ -2992,13 +3007,13 @@ func (ic *IbClient) goReceive() {
 		switch err := ic.scanner.Err(); err {
 		case nil:
 			log.Debug("scanner Done")
-			// go ic.Disconnect()
 		case bufio.ErrTooLong:
 			errBytes := ic.scanner.Bytes()
 			ic.wrapper.Error(NO_VALID_ID, BAD_LENGTH.code, fmt.Sprintf("%s:%d:%s", BAD_LENGTH.msg, len(errBytes), errBytes))
-			log.Panic(BAD_LENGTH.msg, zap.Error(err))
+			ic.err = fmt.Errorf("receiver: %s: %w", BAD_LENGTH.msg, err)
 		default:
-			log.Panic("scanner Error", zap.Error(err))
+			log.Error("scanner error", zap.Error(err))
+			ic.err = fmt.Errorf("receiver: scanner error: %w", err)
 		}
 	}
 
@@ -3008,13 +3023,10 @@ func (ic *IbClient) goReceive() {
 func (ic *IbClient) goDecode() {
 	log.Debug("decoder start")
 	defer func() {
-		if errMsg := recover(); errMsg != nil {
-			err := errors.New(errMsg.(string))
-			log.Error("decoder got unexpected error", zap.Error(err))
-			ic.err = err
-			// ic.Disconnect()
-			log.Debug("try to restart decoder")
-			go ic.goDecode()
+		if p := recover(); p != nil {
+			log.Error("decoder panicked; tearing down connection", zap.Any("panic", p))
+			ic.err = panicError("decoder", p)
+			ic.signalShutdown()
 		}
 	}()
 	defer log.Debug("decoder end")
