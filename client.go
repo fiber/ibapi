@@ -42,7 +42,8 @@ type IbClient struct {
 	msgChan          chan []byte
 	timeChan         chan time.Time
 	terminatedSignal chan int  // signal to terminate the three goroutine
-	done             chan bool // done signal is delivered via disconnect
+	done             chan bool // closed by Disconnect to broadcast shutdown; safe to select on with no receiver present
+	doneOnce         sync.Once // guards close(done) so Disconnect is idempotent
 	clientVersion    Version
 	serverVersion    Version
 	connTime         string
@@ -113,6 +114,7 @@ func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 	}
 	// set done chan after connection is made
 	ic.done = make(chan bool)
+	ic.doneOnce = sync.Once{}
 	return nil
 }
 
@@ -137,11 +139,12 @@ func (ic *IbClient) Disconnect() error {
 
 	// should not reconnect IbClient in ConnectionClosed
 	// because reset would be called right after ConnectionClosed
-	defer func() {
-		if len(ic.done) > 0 {
-			ic.done <- true
-		}
-	}()
+	//
+	// Close (rather than send) the done channel so LoopUntilDone
+	// unblocks whether or not a receiver was already parked on it.
+	// sync.Once guards against a double-close when Disconnect races
+	// against context cancellation or is called twice.
+	defer ic.doneOnce.Do(func() { close(ic.done) })
 	defer ic.reset()
 	defer ic.wrapper.ConnectionClosed()
 	defer log.Info("Disconnected!")
