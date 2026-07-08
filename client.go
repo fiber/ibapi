@@ -45,6 +45,7 @@ type IbClient struct {
 	doneOnce         sync.Once // guards close(done) so Disconnect is idempotent
 	shutdownOnce     sync.Once // guards close(terminatedSignal) — either Disconnect or a panicking goroutine may fire it
 	disconnectOnce   sync.Once // guards the entire Disconnect body so concurrent callers don't race on reset()
+	errOnce          sync.Once // guards ic.err — record the first (usually causative) error only
 	clientVersion    Version
 	serverVersion    Version
 	connTime         string
@@ -71,13 +72,12 @@ CONNECTED
 REDIRECT
 */
 func (ic *IbClient) ConnState() int {
-	return ic.conn.state
+	return int(ic.conn.state.Load())
 }
 
-func (ic *IbClient) setConnState(connState int) {
-	preState := ic.conn.state
-	ic.conn.state = connState
-	log.Debug("change connection state", zap.Int("previous", preState), zap.Int("current", connState))
+func (ic *IbClient) setConnState(connState int32) {
+	preState := ic.conn.state.Swap(connState)
+	log.Debug("change connection state", zap.Int32("previous", preState), zap.Int32("current", connState))
 }
 
 // GetReqID before request data or place order
@@ -118,6 +118,7 @@ func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 	ic.doneOnce = sync.Once{}
 	ic.shutdownOnce = sync.Once{}
 	ic.disconnectOnce = sync.Once{}
+	ic.errOnce = sync.Once{}
 	return nil
 }
 
@@ -126,6 +127,19 @@ func (ic *IbClient) Connect(host string, port int, clientID int64) error {
 // makes both paths safe.
 func (ic *IbClient) signalShutdown() {
 	ic.shutdownOnce.Do(func() { close(ic.terminatedSignal) })
+}
+
+// setErr records the first error observed during the current Connect
+// epoch. Interface assignment isn't atomic in Go (two-word type+data);
+// three worker goroutines can each hit a panic on the same socket
+// blowup and torn writes would corrupt the observed error. First-wins
+// via sync.Once matches "the causative error" semantic and is
+// race-free without an explicit mutex.
+func (ic *IbClient) setErr(err error) {
+	if err == nil {
+		return
+	}
+	ic.errOnce.Do(func() { ic.err = err })
 }
 
 // panicError wraps a recovered panic value into an error. The old code
@@ -159,7 +173,7 @@ func (ic *IbClient) Disconnect() error {
 		ic.signalShutdown()
 
 		if err := ic.conn.disconnect(); err != nil {
-			ic.err = err
+			ic.setErr(err)
 			// still fall through — the goroutines need to unwind and
 			// callers parked on ic.done need to be released.
 		}
@@ -181,7 +195,7 @@ func (ic *IbClient) Disconnect() error {
 
 // IsConnected check if there is a connection to TWS or GateWay
 func (ic *IbClient) IsConnected() bool {
-	return ic.conn.state == CONNECTED
+	return ic.conn.state.Load() == CONNECTED
 }
 
 // send the clientId to TWS or Gateway
@@ -2965,7 +2979,7 @@ func (ic *IbClient) goRequest() {
 	defer func() {
 		if p := recover(); p != nil {
 			log.Error("requester panicked; tearing down connection", zap.Any("panic", p))
-			ic.err = panicError("requester", p)
+			ic.setErr(panicError("requester", p))
 			ic.signalShutdown()
 		}
 	}()
@@ -3002,7 +3016,7 @@ func (ic *IbClient) goReceive() {
 	defer func() {
 		if p := recover(); p != nil {
 			log.Error("receiver panicked; tearing down connection", zap.Any("panic", p))
-			ic.err = panicError("receiver", p)
+			ic.setErr(panicError("receiver", p))
 			ic.signalShutdown()
 			return
 		}
@@ -3034,10 +3048,10 @@ func (ic *IbClient) goReceive() {
 		case bufio.ErrTooLong:
 			errBytes := ic.scanner.Bytes()
 			ic.wrapper.Error(NO_VALID_ID, BAD_LENGTH.code, fmt.Sprintf("%s:%d:%s", BAD_LENGTH.msg, len(errBytes), errBytes))
-			ic.err = fmt.Errorf("receiver: %s: %w", BAD_LENGTH.msg, err)
+			ic.setErr(fmt.Errorf("receiver: %s: %w", BAD_LENGTH.msg, err))
 		default:
 			log.Error("scanner error", zap.Error(err))
-			ic.err = fmt.Errorf("receiver: scanner error: %w", err)
+			ic.setErr(fmt.Errorf("receiver: scanner error: %w", err))
 		}
 	}
 
@@ -3049,7 +3063,7 @@ func (ic *IbClient) goDecode() {
 	defer func() {
 		if p := recover(); p != nil {
 			log.Error("decoder panicked; tearing down connection", zap.Any("panic", p))
-			ic.err = panicError("decoder", p)
+			ic.setErr(panicError("decoder", p))
 			ic.signalShutdown()
 		}
 	}()

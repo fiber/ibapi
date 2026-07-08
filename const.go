@@ -384,7 +384,7 @@ const (
 
 // ConnectionState
 const (
-	DISCONNECTED = iota
+	DISCONNECTED int32 = iota
 	CONNECTING
 	CONNECTED
 	REDIRECT

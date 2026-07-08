@@ -18,6 +18,16 @@ type countingWrapper struct {
 func (w *countingWrapper) ConnectionClosed() { w.closed.Add(1) }
 func (w *countingWrapper) closedCount() int  { return int(w.closed.Load()) }
 
+var (
+	errFakeA = &sentinelErr{"a"}
+	errFakeB = &sentinelErr{"b"}
+	errFakeC = &sentinelErr{"c"}
+)
+
+type sentinelErr struct{ tag string }
+
+func (e *sentinelErr) Error() string { return "sentinel:" + e.tag }
+
 // listenLoopback opens a listener that accepts and drops each connection.
 // Returns the address the client should Dial and a stop function.
 func listenLoopback(t *testing.T) (string, func()) {
@@ -175,6 +185,49 @@ func TestFastRunThenDisconnect(t *testing.T) {
 			t.Fatalf("iter %d Disconnect: %v", i, err)
 		}
 	}
+}
+
+// TestSetErrFirstWins verifies that concurrent panics on different
+// workers don't tear ic.err (an interface, two-word value in Go) and
+// that the first-observed error is preserved rather than clobbered.
+func TestSetErrFirstWins(t *testing.T) {
+	ic := NewIbClient(new(Wrapper))
+	ic.errOnce = sync.Once{}
+
+	first := errFakeA
+	var winnerRecorded atomic.Value
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		e := errFakeA
+		if i%2 == 1 {
+			e = errFakeB
+		}
+		go func(e error) {
+			defer wg.Done()
+			<-start
+			ic.setErr(e)
+			winnerRecorded.CompareAndSwap(nil, e) // best-effort observability
+		}(e)
+	}
+	close(start)
+	wg.Wait()
+
+	if ic.err == nil {
+		t.Fatal("setErr never recorded any error")
+	}
+	if ic.err != errFakeA && ic.err != errFakeB {
+		t.Fatalf("ic.err = %v; want one of the sentinel errors", ic.err)
+	}
+
+	// Second batch after the once fired — must not overwrite.
+	ic.setErr(errFakeC)
+	if ic.err == errFakeC {
+		t.Fatalf("setErr overwrote after first-win; got %v", ic.err)
+	}
+	_ = first
 }
 
 // TestDisconnectWithReceiver verifies a goroutine parked on ic.done
