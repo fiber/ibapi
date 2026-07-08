@@ -739,6 +739,22 @@ func (ic *IbClient) CalculateOptionPrice(reqID int64, contract *Contract, volati
 	ic.reqChan <- msg
 }
 
+// CancelCalculateImpliedVolatility cancels the implied-volatility
+// calculation initiated by CalculateImpliedVolatility. Nuro uses this
+// on the pre-earnings exit path: request IV, decide whether to hold or
+// exit, cancel the subscription either way.
+func (ic *IbClient) CancelCalculateImpliedVolatility(reqID int64) {
+	if ic.serverVersion < mMIN_SERVER_VER_REQ_CALC_IMPLIED_VOLAT {
+		ic.wrapper.Error(reqID, UPDATE_TWS.code, UPDATE_TWS.msg+"  It does not support calculateImpliedVolatility req.")
+		return
+	}
+
+	const v = 1
+	msg := makeMsgBytes(mCANCEL_CALC_IMPLIED_VOLAT, v, reqID)
+
+	ic.reqChan <- msg
+}
+
 // CancelCalculateOptionPrice cancels the calculation of option price
 func (ic *IbClient) CancelCalculateOptionPrice(reqID int64) {
 	if ic.serverVersion < mMIN_SERVER_VER_REQ_CALC_IMPLIED_VOLAT {
@@ -926,7 +942,7 @@ func (ic *IbClient) PlaceOrder(orderID int64, contract *Contract, order *Order) 
 	case v < mMIN_SERVER_VER_ALGO_ID && order.AlgoID != "":
 		ic.wrapper.Error(orderID, UPDATE_TWS.code, UPDATE_TWS.msg+"  It does not support algoId parameter.")
 		return
-	case v < mMIN_SERVER_VER_ORDER_SOLICITED && order.Solictied:
+	case v < mMIN_SERVER_VER_ORDER_SOLICITED && order.Solicited:
 		ic.wrapper.Error(orderID, UPDATE_TWS.code, UPDATE_TWS.msg+"  It does not support order solicited parameter.")
 		return
 	case v < mMIN_SERVER_VER_MODELS_SUPPORT && order.ModelCode != "":
@@ -1255,7 +1271,7 @@ func (ic *IbClient) PlaceOrder(orderID int64, contract *Contract, order *Order) 
 	}
 
 	if ic.serverVersion >= mMIN_SERVER_VER_ORDER_SOLICITED {
-		fields = append(fields, order.Solictied)
+		fields = append(fields, order.Solicited)
 	}
 
 	if ic.serverVersion >= mMIN_SERVER_VER_RANDOMIZE_SIZE_AND_PRICE {

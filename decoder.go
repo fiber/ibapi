@@ -802,7 +802,7 @@ func (d *ibDecoder) processOpenOrder(msgBuf *MsgBuffer) {
 	// ----------
 
 	if version >= 33 {
-		o.Solictied = msgBuf.readBool()
+		o.Solicited = msgBuf.readBool()
 	}
 
 	orderState := &OrderState{}
@@ -2112,7 +2112,7 @@ func (d *ibDecoder) processCompletedOrderMsg(msgBuf *MsgBuffer) {
 	}
 
 	if version >= 33 {
-		o.Solictied = msgBuf.readBool()
+		o.Solicited = msgBuf.readBool()
 	}
 
 	orderState.Status = msgBuf.readString()

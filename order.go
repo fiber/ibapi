@@ -141,7 +141,7 @@ type Order struct {
 
 	// --------------Not Held ------------------
 	NotHeld   bool
-	Solictied bool
+	Solicited bool
 	//--------------------------------------
 
 	// models
